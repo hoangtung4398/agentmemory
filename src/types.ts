@@ -167,6 +167,209 @@ export interface AgentMemoryConfig {
   dataDir: string;
 }
 
+export type DecisionMode = "disabled" | "shadow" | "advisory" | "enforce";
+
+export type ActiveDecisionMode = Exclude<DecisionMode, "disabled">;
+
+export type DecisionProvider = "heuristic" | "llm" | "hybrid";
+
+export type DecisionAction =
+  | "ignore"
+  | "working_memory"
+  | "episodic_memory"
+  | "semantic_memory_candidate"
+  | "procedural_memory_candidate";
+
+export type DecisionCandidateKind = "semantic" | "procedural" | "none";
+
+export type DecisionSourceFunction =
+  | "mem::observe"
+  | "mem::compress"
+  | "mem::remember"
+  | "mem::consolidate"
+  | "mem::consolidation-pipeline"
+  | "mem::context"
+  | "mem::search"
+  | "mem::smart-search";
+
+export type DecisionObservationState = "raw" | "compressed" | "unknown";
+
+export interface DecisionEvidenceRef {
+  kind:
+    | "observation"
+    | "memory"
+    | "summary"
+    | "semantic"
+    | "procedural"
+    | "lesson"
+    | "graph";
+  id: string;
+  sessionId?: string;
+}
+
+export interface DecisionInput {
+  id: string;
+  inputHash: string;
+  mode: ActiveDecisionMode;
+  sourceFunction: DecisionSourceFunction;
+  insertionPoint: string;
+  timestamp: string;
+  project?: string;
+  sessionId?: string;
+  cwd?: string;
+  agentId?: string;
+  observationId?: string;
+  observationState?: DecisionObservationState;
+  hookType?: HookType;
+  toolName?: string;
+  rawSignals?: Record<string, unknown>;
+  compressedSignals?: {
+    type?: ObservationType;
+    title?: string;
+    facts?: string[];
+    narrative?: string;
+    concepts?: string[];
+    files?: string[];
+    importance?: number;
+    confidence?: number;
+  };
+  memoryDraft?: {
+    type?: Memory["type"];
+    title?: string;
+    content?: string;
+    concepts?: string[];
+    files?: string[];
+    project?: string;
+    agentId?: string;
+  };
+  retrievalSignals?: {
+    query?: string;
+    resultIds?: string[];
+    resultCount?: number;
+  };
+  contextSignals?: {
+    blockCount?: number;
+    tokenBudget?: number;
+    sourceKinds?: string[];
+  };
+  evidenceRefs: DecisionEvidenceRef[];
+  constraints: {
+    preserveDefaultBehavior: boolean;
+    mayWriteExistingKvShape: false;
+    mayChangeHookPayload: false;
+    mayChangeSearchRanking: false;
+  };
+}
+
+export interface DecisionCandidate {
+  id: string;
+  inputId: string;
+  action: DecisionAction;
+  source: "heuristic" | "llm" | "merged";
+  reasonCodes: string[];
+  explanation: string;
+  confidence: number;
+  importance: number;
+  ttlDays?: number;
+  tags: string[];
+  concepts: string[];
+  files: string[];
+  evidenceRefs: DecisionEvidenceRef[];
+  proposedQueue?: Exclude<DecisionCandidateKind, "none">;
+  createdAt: string;
+}
+
+export interface MemoryDecision {
+  id: string;
+  inputId: string;
+  mode: ActiveDecisionMode;
+  action: DecisionAction;
+  confidence: number;
+  importance: number;
+  ttlDays?: number;
+  reasonCodes: string[];
+  explanation: string;
+  candidates: DecisionCandidate[];
+  selectedCandidateId?: string;
+  appliesTo: {
+    observationId?: string;
+    memoryId?: string;
+    sessionId?: string;
+    project?: string;
+    agentId?: string;
+  };
+  effects: {
+    persistAudit: boolean;
+    enqueueCandidate: boolean;
+    alterExistingFlow: boolean;
+    skipExistingWrite: boolean;
+    alterIndexing: false;
+  };
+  createdAt: string;
+}
+
+export interface DecisionAudit {
+  id: string;
+  decisionId: string;
+  inputId: string;
+  inputHash: string;
+  mode: ActiveDecisionMode;
+  sourceFunction: DecisionSourceFunction;
+  insertionPoint: string;
+  action: DecisionAction;
+  project?: string;
+  sessionId?: string;
+  agentId?: string;
+  observationId?: string;
+  memoryId?: string;
+  confidence: number;
+  importance: number;
+  ttlDays?: number;
+  reasonCodes: string[];
+  explanation: string;
+  evidenceRefs: DecisionEvidenceRef[];
+  outcome: "observed" | "advised" | "enforced" | "fallback";
+  fallbackReason?: string;
+  candidateQueued?: boolean;
+  candidateQueueId?: string;
+  candidateQueueError?: string;
+  existingBehaviorPreserved: boolean;
+  createdAt: string;
+}
+
+export interface DecisionCandidateQueue {
+  id: string;
+  kind: Exclude<DecisionCandidateKind, "none">;
+  status: "pending" | "consumed" | "rejected" | "expired";
+  decisionId: string;
+  candidateId: string;
+  project?: string;
+  sessionId?: string;
+  agentId?: string;
+  content: string;
+  concepts: string[];
+  files: string[];
+  confidence: number;
+  importance: number;
+  ttlDays?: number;
+  evidenceRefs: DecisionEvidenceRef[];
+  createdAt: string;
+  expiresAt?: string;
+  consumedAt?: string;
+  consumedBy?: "mem::consolidation-pipeline";
+}
+
+export interface DecisionConfig {
+  mode: DecisionMode;
+  provider: DecisionProvider;
+  auditEnabled: boolean;
+  shadowQueueEnabled: boolean;
+  candidateQueueEnabled: boolean;
+  candidateMinConfidence: number;
+  enforceIgnoreEnabled: boolean;
+  enforceIgnoreMinConfidence: number;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;

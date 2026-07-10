@@ -1,27 +1,109 @@
 import { TriggerAction, type ISdk } from "iii-sdk";
-import type { Memory } from "../types.js";
-import { KV, generateId, jaccardSimilarity } from "../state/schema.js";
+import type { DecisionInput, Memory } from "../types.js";
+import { KV, fingerprintId, generateId, jaccardSimilarity } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { memoryToObservation } from "../state/memory-utils.js";
 import { deleteAccessLog } from "./access-tracker.js";
 import { recordAudit } from "./audit.js";
 import { getSearchIndex, vectorIndexAddGuarded, vectorIndexRemove, flushIndexSave } from "./search.js";
-import { getAgentId } from "../config.js";
+import { getAgentId, loadDecisionConfig } from "../config.js";
 import { logger } from "../logger.js";
+
+interface RememberInput {
+  content: string;
+  type?: string;
+  concepts?: string[];
+  files?: string[];
+  ttlDays?: number;
+  sourceObservationIds?: string[];
+  agentId?: string;
+  project?: string;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : [];
+}
+
+function rememberInputHash(memoryDraft: NonNullable<DecisionInput["memoryDraft"]>): string {
+  try {
+    return fingerprintId("din", JSON.stringify(memoryDraft));
+  } catch {
+    return fingerprintId("din", memoryDraft.content ?? memoryDraft.title ?? "");
+  }
+}
+
+async function runRememberDecisionAudit(
+  sdk: ISdk,
+  data: RememberInput,
+  memType: Memory["type"],
+  project: string | undefined,
+  agentId: string | undefined,
+  now: string,
+): Promise<void> {
+  const decisionConfig = loadDecisionConfig();
+  if (decisionConfig.mode !== "shadow" && decisionConfig.mode !== "advisory") return;
+
+  const memoryDraft: NonNullable<DecisionInput["memoryDraft"]> = {
+    type: memType,
+    title: data.content.slice(0, 80),
+    content: data.content,
+    concepts: stringArray(data.concepts),
+    files: stringArray(data.files),
+    project,
+    agentId,
+  };
+
+  const input: DecisionInput = {
+    id: generateId("di"),
+    inputHash: rememberInputHash(memoryDraft),
+    mode: decisionConfig.mode,
+    sourceFunction: "mem::remember",
+    insertionPoint: "remember.after_validation.before_save",
+    timestamp: now,
+    project,
+    agentId,
+    memoryDraft,
+    evidenceRefs: stringArray(data.sourceObservationIds).map((id) => ({
+      kind: "observation",
+      id,
+    })),
+    constraints: {
+      preserveDefaultBehavior: true,
+      mayWriteExistingKvShape: false,
+      mayChangeHookPayload: false,
+      mayChangeSearchRanking: false,
+    },
+  };
+
+  try {
+    const result = await sdk.trigger({
+      function_id: "mem::decide",
+      payload: input,
+    });
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      "success" in result &&
+      result.success === false
+    ) {
+      logger.warn("Decision Engine remember audit call returned an error", {
+        project,
+      });
+    }
+  } catch (error) {
+    logger.warn("Decision Engine remember audit call failed", {
+      project,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::remember", 
-    async (data: {
-      content: string;
-      type?: string;
-      concepts?: string[];
-      files?: string[];
-      ttlDays?: number;
-      sourceObservationIds?: string[];
-      agentId?: string;
-      project?: string;
-    }) => {
+    async (data: RememberInput) => {
       if (
         !data.content ||
         typeof data.content !== "string" ||
@@ -59,6 +141,13 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
           ? data.project.trim()
           : undefined;
 
+      const callAgentId =
+        typeof data.agentId === "string" && data.agentId.trim().length > 0
+          ? data.agentId.trim().slice(0, 128)
+          : getAgentId();
+
+      await runRememberDecisionAudit(sdk, data, memType, project, callAgentId, now);
+
       return withKeyedLock("mem:remember", async () => {
         const existingMemories = await kv.list<Memory>(KV.memories);
         let supersededId: string | undefined;
@@ -90,11 +179,6 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
         // filter by agent. Request body wins (multi-agent runtimes
         // explicitly tagging at write time), env AGENT_ID fallback,
         // none → memory is unscoped (legacy behavior).
-        const callAgentId =
-          typeof data.agentId === "string" && data.agentId.trim().length > 0
-            ? data.agentId.trim().slice(0, 128)
-            : getAgentId();
-
         const memory: Memory = {
           id: generateId("mem"),
           createdAt: now,

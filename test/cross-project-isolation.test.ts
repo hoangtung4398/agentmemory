@@ -20,6 +20,16 @@ vi.mock("../src/functions/access-tracker.js", () => ({
 vi.mock("../src/config.js", () => ({
   getAgentId: () => undefined,
   isAgentScopeIsolated: () => false,
+  loadDecisionConfig: () => ({
+    mode: "disabled",
+    provider: "heuristic",
+    auditEnabled: false,
+    shadowQueueEnabled: false,
+    candidateQueueEnabled: false,
+    candidateMinConfidence: 0.7,
+    enforceIgnoreEnabled: false,
+    enforceIgnoreMinConfidence: 0.9,
+  }),
 }));
 
 import { registerRememberFunction } from "../src/functions/remember.js";

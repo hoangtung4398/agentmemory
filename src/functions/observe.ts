@@ -1,14 +1,19 @@
 import { TriggerAction, type ISdk } from "iii-sdk";
-import type { RawObservation, HookPayload } from "../types.js";
-import { KV, STREAM, generateId } from "../state/schema.js";
+import type {
+  DecisionConfig,
+  DecisionInput,
+  MemoryDecision,
+  RawObservation,
+  HookPayload,
+} from "../types.js";
+import { KV, STREAM, fingerprintId, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { stripPrivateData } from "./privacy.js";
 import { DedupMap } from "./dedup.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
-import { isAutoCompressEnabled } from "../config.js";
+import { getAgentId, isAutoCompressEnabled, loadDecisionConfig } from "../config.js";
 import { buildSyntheticCompression } from "./compress-synthetic.js";
 import { getSearchIndex, vectorIndexAddGuarded } from "./search.js";
-import { getAgentId } from "../config.js";
 import { logger } from "../logger.js";
 import { saveImageToDisk } from "../utils/image-store.js";
 
@@ -33,6 +38,178 @@ export function extractImage(d: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function observeInputHash(rawSignals: Record<string, unknown>): string {
+  try {
+    return fingerprintId("din", JSON.stringify(rawSignals));
+  } catch {
+    return fingerprintId("din", String(rawSignals.observationId ?? rawSignals.sessionId ?? ""));
+  }
+}
+
+interface ObserveDecisionCall {
+  config: DecisionConfig;
+  decision: MemoryDecision | null;
+  auditId?: string;
+}
+
+const ENFORCE_IGNORE_REASON_CODES = new Set([
+  "secret_or_credential_like_content",
+  "temporary_tool_noise",
+  "fallback_secret_or_noise_ignore",
+]);
+
+function observationDecisionText(raw: RawObservation): string {
+  try {
+    return JSON.stringify({
+      hookType: raw.hookType,
+      toolName: raw.toolName,
+      toolInput: raw.toolInput,
+      toolOutput: raw.toolOutput,
+      userPrompt: raw.userPrompt,
+      raw: raw.raw,
+    }).toLowerCase();
+  } catch {
+    return String(raw.raw ?? "").toLowerCase();
+  }
+}
+
+function hasEnforceIgnoreDisqualifier(raw: RawObservation): boolean {
+  const text = observationDecisionText(raw);
+  if (raw.userPrompt && raw.userPrompt.trim().length > 0) return true;
+  if (/\b(?:remember|save|note|keep this)\b/i.test(text)) return true;
+  if (/\b(?:key decision|decided|decision|session summary|summary|milestone)\b/i.test(text)) return true;
+  if (/\b(?:error|failed|failure|exception|traceback|stderr|stack trace|syntaxerror|typeerror|referenceerror|enoent|line \d+)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:write|edit|multiedit|patch|apply_patch|modified|created file|updated file|deleted file)\b/i.test(raw.toolName ?? "")) {
+    return true;
+  }
+  return /\b(?:file modified|files modified|wrote file|edited file|deleted file|created file|apply_patch)\b/i.test(text);
+}
+
+function shouldEnforceObserveIgnore(
+  call: ObserveDecisionCall,
+  raw: RawObservation,
+): boolean {
+  if (call.config.mode !== "enforce") return false;
+  if (!call.config.enforceIgnoreEnabled) return false;
+  const decision = call.decision;
+  if (!decision || decision.action !== "ignore") return false;
+  if (decision.confidence < call.config.enforceIgnoreMinConfidence) return false;
+  if (!decision.reasonCodes.some((code) => ENFORCE_IGNORE_REASON_CODES.has(code))) {
+    return false;
+  }
+  if (raw.hookType !== "notification" && raw.hookType !== "post_tool_use") {
+    return false;
+  }
+  return !hasEnforceIgnoreDisqualifier(raw);
+}
+
+async function runObserveDecisionAudit(
+  sdk: ISdk,
+  payload: HookPayload,
+  raw: RawObservation,
+  sanitizedRaw: unknown,
+): Promise<ObserveDecisionCall> {
+  const decisionConfig = loadDecisionConfig();
+  if (
+    decisionConfig.mode !== "shadow" &&
+    decisionConfig.mode !== "advisory" &&
+    decisionConfig.mode !== "enforce"
+  ) {
+    return { config: decisionConfig, decision: null };
+  }
+
+  const rawSignals: Record<string, unknown> = {
+    observationId: raw.id,
+    sessionId: raw.sessionId,
+    hookType: raw.hookType,
+    toolName: raw.toolName,
+    toolInput: raw.toolInput,
+    toolOutput: raw.toolOutput,
+    userPrompt: raw.userPrompt,
+    modality: raw.modality,
+    sanitizedRaw,
+  };
+
+  const input: DecisionInput = {
+    id: generateId("di"),
+    inputHash: observeInputHash(rawSignals),
+    mode: decisionConfig.mode,
+    sourceFunction: "mem::observe",
+    insertionPoint: "observe.after_sanitization.before_kv_write",
+    timestamp: new Date().toISOString(),
+    project: asOptionalString(payload.project),
+    sessionId: payload.sessionId,
+    cwd: asOptionalString(payload.cwd),
+    agentId: raw.agentId,
+    observationId: raw.id,
+    observationState: "raw",
+    hookType: raw.hookType,
+    toolName: raw.toolName,
+    rawSignals,
+    evidenceRefs: [
+      {
+        kind: "observation",
+        id: raw.id,
+        sessionId: payload.sessionId,
+      },
+    ],
+    constraints: {
+      preserveDefaultBehavior: true,
+      mayWriteExistingKvShape: false,
+      mayChangeHookPayload: false,
+      mayChangeSearchRanking: false,
+    },
+  };
+
+  try {
+    const result = await sdk.trigger({
+      function_id: "mem::decide",
+      payload: input,
+    });
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      "success" in result &&
+      result.success === false
+    ) {
+      logger.warn("Decision Engine observe audit call returned an error", {
+        observationId: raw.id,
+      });
+      return { config: decisionConfig, decision: null };
+    }
+    const auditId =
+      typeof result === "object" &&
+      result !== null &&
+      "auditId" in result &&
+      typeof result.auditId === "string"
+        ? result.auditId
+        : undefined;
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      "decision" in result &&
+      typeof result.decision === "object" &&
+      result.decision !== null
+    ) {
+      return { config: decisionConfig, decision: result.decision as MemoryDecision, auditId };
+    }
+  } catch (error) {
+    logger.warn("Decision Engine observe audit call failed", {
+      observationId: raw.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return { config: decisionConfig, decision: null };
 }
 
 export function registerObserveFunction(
@@ -174,6 +351,8 @@ export function registerObserveFunction(
           }
         }
 
+        const decisionCall = await runObserveDecisionAudit(sdk, payload, raw, sanitizedRaw);
+
         try {
 
           await kv.set(KV.observations(payload.sessionId), obsId, raw);
@@ -280,11 +459,35 @@ export function registerObserveFunction(
           });
         }
 
+        const enforceIgnore = shouldEnforceObserveIgnore(decisionCall, raw);
+
         // Per-observation LLM compression is opt-in as of 0.8.8.
         // Default path: build a zero-LLM synthetic compression so recall
         // and BM25 search still work without burning the user's Claude
         // token allocation on every tool invocation.
-        if (isAutoCompressEnabled()) {
+        if (enforceIgnore) {
+          if (decisionCall.auditId) {
+            try {
+              await kv.update(KV.decisionAudit, decisionCall.auditId, [
+                { type: "set", path: "outcome", value: "enforced" },
+                { type: "set", path: "existingBehaviorPreserved", value: false },
+              ]);
+            } catch (error) {
+              logger.warn("Decision Engine enforce audit update failed", {
+                observationId: obsId,
+                auditId: decisionCall.auditId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+          logger.info("Observation captured", {
+            obsId,
+            sessionId: payload.sessionId,
+            hook: payload.hookType,
+            compress: "enforced_ignore",
+          });
+          return { observationId: obsId };
+        } else if (isAutoCompressEnabled()) {
           await sdk.trigger({
             function_id: "mem::compress",
             payload: {

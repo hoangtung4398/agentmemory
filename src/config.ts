@@ -9,6 +9,9 @@ import type {
   FallbackConfig,
   ClaudeBridgeConfig,
   TeamConfig,
+  DecisionConfig,
+  DecisionMode,
+  DecisionProvider,
 } from "./types.js";
 
 function safeParseInt(value: string | undefined, fallback: number): number {
@@ -193,6 +196,134 @@ function getMergedEnv(
 
 export function getEnvVar(key: string): string | undefined {
   return getMergedEnv()[key];
+}
+
+const DECISION_MODES = new Set<DecisionMode>([
+  "disabled",
+  "shadow",
+  "advisory",
+  "enforce",
+]);
+
+const DECISION_PROVIDERS = new Set<DecisionProvider>([
+  "heuristic",
+  "llm",
+  "hybrid",
+]);
+
+function parseDecisionMode(value: string | undefined): DecisionMode {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && DECISION_MODES.has(normalized as DecisionMode)
+    ? (normalized as DecisionMode)
+    : "disabled";
+}
+
+function parseDecisionProvider(value: string | undefined): DecisionProvider {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && DECISION_PROVIDERS.has(normalized as DecisionProvider)
+    ? (normalized as DecisionProvider)
+    : "heuristic";
+}
+
+function parseBooleanEnv(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return fallback;
+}
+
+function parseEnforceIgnoreMinConfidence(value: string | undefined): number {
+  const parsed = value === undefined || value.trim().length === 0
+    ? 0.85
+    : Number(value);
+  if (!Number.isFinite(parsed)) return 0.85;
+  return Math.max(0.85, Math.min(1, parsed));
+}
+
+function parseDecisionCandidateMinConfidence(value: string | undefined): number {
+  const parsed = value === undefined || value.trim().length === 0
+    ? 0.7
+    : Number(value);
+  if (!Number.isFinite(parsed)) return 0.7;
+  return Math.max(0.5, Math.min(1, parsed));
+}
+
+function parseClampedInt(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = value === undefined || value.trim().length === 0
+    ? fallback
+    : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+export function loadDecisionConfig(): DecisionConfig {
+  const env = getMergedEnv();
+  const mode = parseDecisionMode(env["AGENTMEMORY_DECISION_MODE"]);
+  const provider = parseDecisionProvider(env["AGENTMEMORY_DECISION_PROVIDER"]);
+  const active = mode !== "disabled";
+  const auditEnabled = active
+    ? parseBooleanEnv(env["AGENTMEMORY_DECISION_AUDIT"], true)
+    : false;
+  const shadowQueueEnabled =
+    mode === "shadow" &&
+    parseBooleanEnv(env["AGENTMEMORY_DECISION_SHADOW_QUEUE"], false);
+  const candidateQueueEnabled =
+    mode === "advisory" || mode === "enforce"
+      ? parseBooleanEnv(env["AGENTMEMORY_DECISION_CANDIDATE_QUEUE"], true)
+      : mode === "shadow" && shadowQueueEnabled
+        ? parseBooleanEnv(env["AGENTMEMORY_DECISION_CANDIDATE_QUEUE"], true)
+        : false;
+  const enforceIgnoreEnabled =
+    mode === "enforce" &&
+    parseBooleanEnv(env["AGENTMEMORY_DECISION_ENFORCE_IGNORE"], false);
+
+  return {
+    mode,
+    provider,
+    auditEnabled,
+    shadowQueueEnabled,
+    candidateQueueEnabled,
+    candidateMinConfidence: parseDecisionCandidateMinConfidence(
+      env["AGENTMEMORY_DECISION_CANDIDATE_MIN_CONFIDENCE"],
+    ),
+    enforceIgnoreEnabled,
+    enforceIgnoreMinConfidence: parseEnforceIgnoreMinConfidence(
+      env["AGENTMEMORY_DECISION_ENFORCE_IGNORE_MIN_CONFIDENCE"],
+    ),
+  };
+}
+
+export function isDecisionCandidateConsumptionEnabled(): boolean {
+  return parseBooleanEnv(
+    getMergedEnv()["AGENTMEMORY_DECISION_CONSUME_CANDIDATES"],
+    false,
+  );
+}
+
+export function getDecisionCandidateBatchLimit(): number {
+  return parseClampedInt(
+    getMergedEnv()["AGENTMEMORY_DECISION_CANDIDATE_BATCH_LIMIT"],
+    50,
+    1,
+    500,
+  );
+}
+
+export function getDecisionCandidateMinEvidence(): number {
+  return parseClampedInt(
+    getMergedEnv()["AGENTMEMORY_DECISION_CANDIDATE_MIN_EVIDENCE"],
+    2,
+    1,
+    10,
+  );
 }
 
 export function isDropStaleIndexEnabled(): boolean {

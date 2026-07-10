@@ -6,12 +6,27 @@ vi.mock("../src/logger.js", () => ({
 
 vi.mock("../src/config.js", () => ({
   getConsolidationDecayDays: () => 30,
+  getDecisionCandidateBatchLimit: vi.fn(() => 50),
+  getDecisionCandidateMinEvidence: vi.fn(() => 2),
   isConsolidationEnabled: vi.fn(() => true),
+  isDecisionCandidateConsumptionEnabled: vi.fn(() => false),
 }));
 
 import { registerConsolidationPipelineFunction } from "../src/functions/consolidation-pipeline.js";
-import { isConsolidationEnabled } from "../src/config.js";
-import type { SessionSummary, Memory, SemanticMemory, ProceduralMemory } from "../src/types.js";
+import {
+  getDecisionCandidateBatchLimit,
+  getDecisionCandidateMinEvidence,
+  isConsolidationEnabled,
+  isDecisionCandidateConsumptionEnabled,
+} from "../src/config.js";
+import { KV } from "../src/state/schema.js";
+import type {
+  DecisionCandidateQueue,
+  SessionSummary,
+  Memory,
+  SemanticMemory,
+  ProceduralMemory,
+} from "../src/types.js";
 
 function mockKV() {
   const store = new Map<string, Map<string, unknown>>();
@@ -83,6 +98,33 @@ function makePattern(i: number): Memory {
   };
 }
 
+function makeCandidate(
+  id: string,
+  kind: DecisionCandidateQueue["kind"],
+  overrides: Partial<DecisionCandidateQueue> = {},
+): DecisionCandidateQueue {
+  return {
+    id,
+    kind,
+    status: "pending",
+    decisionId: `md_${id}`,
+    candidateId: `dc_${id}`,
+    project: "test-project",
+    sessionId: `ses_${id}`,
+    content:
+      kind === "semantic"
+        ? "AgentMemory preserves existing hook payload shapes."
+        : "Successful procedure: first run npm test, then run npm run build.",
+    concepts: kind === "semantic" ? ["compatibility"] : ["release workflow"],
+    files: [],
+    confidence: 0.82,
+    importance: 8,
+    evidenceRefs: [{ kind: "observation", id: `obs_${id}`, sessionId: `ses_${id}` }],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("Consolidation Pipeline", () => {
   let sdk: ReturnType<typeof mockSdk>;
   let kv: ReturnType<typeof mockKV>;
@@ -90,6 +132,10 @@ describe("Consolidation Pipeline", () => {
   beforeEach(() => {
     sdk = mockSdk();
     kv = mockKV();
+    vi.mocked(isConsolidationEnabled).mockReturnValue(true);
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(false);
+    vi.mocked(getDecisionCandidateBatchLimit).mockReturnValue(50);
+    vi.mocked(getDecisionCandidateMinEvidence).mockReturnValue(2);
   });
 
   it("pipeline skips semantic when fewer than 5 summaries", async () => {
@@ -115,6 +161,23 @@ describe("Consolidation Pipeline", () => {
     expect(provider.summarize).not.toHaveBeenCalled();
   });
 
+  it("registers the legacy function id and the consolidation-pipeline alias", async () => {
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+
+    await expect(
+      sdk.trigger("mem::consolidate-pipeline", { tier: "semantic" }),
+    ).resolves.toMatchObject({ success: true });
+    await expect(
+      sdk.trigger("mem::consolidation-pipeline", { tier: "semantic" }),
+    ).resolves.toMatchObject({ success: true });
+  });
+
+
   it("pipeline skips procedural when fewer than 2 patterns", async () => {
     const provider = {
       name: "test",
@@ -137,6 +200,233 @@ describe("Consolidation Pipeline", () => {
     const procedural = result.results.procedural as { skipped: boolean; reason: string };
     expect(procedural.skipped).toBe(true);
     expect(procedural.reason).toContain("fewer than 2");
+  });
+
+  it("candidate consumption disabled leaves current pipeline behavior and queue rows unchanged", async () => {
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const candidate = makeCandidate("sem_disabled", "semantic");
+    await kv.set(KV.decisionCandidates, candidate.id, candidate);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.success).toBe(true);
+    expect(result.results.decisionCandidates).toBeUndefined();
+    expect(result.results.semantic).toMatchObject({
+      skipped: true,
+      reason: "fewer than 5 summaries",
+    });
+    await expect(kv.list<SemanticMemory>(KV.semantic)).resolves.toEqual([]);
+    await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, candidate.id))
+      .resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("empty candidate queue keeps pipeline output identical when consumption is enabled", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.success).toBe(true);
+    expect(result.results.decisionCandidates).toBeUndefined();
+    expect(result.results.semantic).toMatchObject({
+      skipped: true,
+      reason: "fewer than 5 summaries",
+    });
+  });
+
+  it("expired candidates are marked expired and not consumed", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const candidate = makeCandidate("sem_expired", "semantic", {
+      expiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    await kv.set(KV.decisionCandidates, candidate.id, candidate);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.results.decisionCandidates).toMatchObject({
+      scanned: 1,
+      expired: 1,
+      consumed: 0,
+    });
+    await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, candidate.id))
+      .resolves.toMatchObject({ status: "expired" });
+    await expect(kv.list<SemanticMemory>(KV.semantic)).resolves.toEqual([]);
+  });
+
+  it("invalid candidates are rejected and do not block the pipeline", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const candidate = makeCandidate("sem_invalid", "semantic", { content: "" });
+    await kv.set(KV.decisionCandidates, candidate.id, candidate);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.success).toBe(true);
+    expect(result.results.decisionCandidates).toMatchObject({
+      scanned: 1,
+      rejected: 1,
+      consumed: 0,
+    });
+    await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, candidate.id))
+      .resolves.toMatchObject({ status: "rejected" });
+    await expect(kv.list<SemanticMemory>(KV.semantic)).resolves.toEqual([]);
+  });
+
+  it("low-evidence semantic candidates remain pending", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const candidate = makeCandidate("sem_single", "semantic");
+    await kv.set(KV.decisionCandidates, candidate.id, candidate);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.results.decisionCandidates).toMatchObject({
+      scanned: 1,
+      pending: 1,
+      consumed: 0,
+      semanticCreated: 0,
+    });
+    await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, candidate.id))
+      .resolves.toMatchObject({ status: "pending" });
+    await expect(kv.list<SemanticMemory>(KV.semantic)).resolves.toEqual([]);
+  });
+
+  it("enough semantic candidates create SemanticMemory and mark rows consumed", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const first = makeCandidate("sem_1", "semantic");
+    const second = makeCandidate("sem_2", "semantic", {
+      content: "AgentMemory preserves existing hook payload shapes.",
+    });
+    await kv.set(KV.decisionCandidates, first.id, first);
+    await kv.set(KV.decisionCandidates, second.id, second);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "semantic",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.results.decisionCandidates).toMatchObject({
+      scanned: 2,
+      consumed: 2,
+      semanticCreated: 1,
+    });
+    const semantic = await kv.list<SemanticMemory>(KV.semantic);
+    expect(semantic).toHaveLength(1);
+    expect(semantic[0]).toMatchObject({
+      fact: "AgentMemory preserves existing hook payload shapes.",
+      sourceMemoryIds: [],
+      accessCount: 1,
+    });
+    expect(semantic[0]).not.toHaveProperty("project");
+    expect(semantic[0].sourceSessionIds).toEqual(["ses_sem_1", "ses_sem_2"]);
+    for (const id of [first.id, second.id]) {
+      const row = await kv.get<DecisionCandidateQueue>(KV.decisionCandidates, id);
+      expect(row).toMatchObject({
+        status: "consumed",
+        consumedBy: "mem::consolidation-pipeline",
+      });
+      expect(row?.consumedAt).toBeDefined();
+    }
+
+    await sdk.trigger("mem::consolidate-pipeline", { tier: "semantic" });
+    const afterSecondRun = await kv.list<SemanticMemory>(KV.semantic);
+    expect(afterSecondRun).toHaveLength(1);
+    for (const id of [first.id, second.id]) {
+      await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, id))
+        .resolves.toMatchObject({ status: "consumed" });
+    }
+  });
+
+  it("enough procedural candidates create ProceduralMemory and mark rows consumed", async () => {
+    vi.mocked(isDecisionCandidateConsumptionEnabled).mockReturnValue(true);
+    const provider = {
+      name: "test",
+      compress: vi.fn(),
+      summarize: vi.fn(),
+    };
+    registerConsolidationPipelineFunction(sdk as never, kv as never, provider as never);
+    const first = makeCandidate("proc_1", "procedural");
+    const second = makeCandidate("proc_2", "procedural");
+    await kv.set(KV.decisionCandidates, first.id, first);
+    await kv.set(KV.decisionCandidates, second.id, second);
+
+    const result = (await sdk.trigger("mem::consolidate-pipeline", {
+      tier: "procedural",
+    })) as { success: boolean; results: Record<string, unknown> };
+
+    expect(result.results.decisionCandidates).toMatchObject({
+      scanned: 2,
+      consumed: 2,
+      proceduralCreated: 1,
+    });
+    const procedural = await kv.list<ProceduralMemory>(KV.procedural);
+    expect(procedural).toHaveLength(1);
+    expect(procedural[0]).toMatchObject({
+      name: "release workflow",
+      triggerCondition: "When related workflow evidence recurs",
+      frequency: 2,
+      sourceObservationIds: ["obs_proc_1", "obs_proc_2"],
+      concepts: ["release workflow"],
+    });
+    expect(procedural[0].steps.length).toBeGreaterThanOrEqual(2);
+    expect(procedural[0]).not.toHaveProperty("decisionId");
+    for (const id of [first.id, second.id]) {
+      const row = await kv.get<DecisionCandidateQueue>(KV.decisionCandidates, id);
+      expect(row).toMatchObject({
+        status: "consumed",
+        consumedBy: "mem::consolidation-pipeline",
+      });
+      expect(row?.consumedAt).toBeDefined();
+    }
+
+    await sdk.trigger("mem::consolidate-pipeline", { tier: "procedural" });
+    const afterSecondRun = await kv.list<ProceduralMemory>(KV.procedural);
+    expect(afterSecondRun).toHaveLength(1);
+    for (const id of [first.id, second.id]) {
+      await expect(kv.get<DecisionCandidateQueue>(KV.decisionCandidates, id))
+        .resolves.toMatchObject({ status: "consumed" });
+    }
   });
 
   it("with enough summaries, creates semantic memories from provider response", async () => {
