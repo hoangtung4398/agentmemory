@@ -331,6 +331,40 @@ export const V040_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "memory_decision_audit",
+    description: "Inspect Decision Engine audit records without mutating memory state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", description: "Filter by decision mode" },
+        action: { type: "string", description: "Filter by selected decision action" },
+        sourceFunction: { type: "string", description: "Filter by source iii function" },
+        insertionPoint: { type: "string", description: "Filter by insertion point" },
+        project: { type: "string", description: "Filter by project" },
+        agentId: { type: "string", description: "Filter by agent ID" },
+        sessionId: { type: "string", description: "Filter by session ID" },
+        limit: { type: "number", description: "Max audit rows (default 50, max 500)" },
+      },
+    },
+  },
+  {
+    name: "memory_decision_candidates",
+    description: "Inspect Decision Engine candidate queue rows without mutating memory state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", description: "Filter by candidate kind: semantic or procedural" },
+        status: { type: "string", description: "Filter by status: pending, consumed, rejected, or expired" },
+        project: { type: "string", description: "Filter by project" },
+        agentId: { type: "string", description: "Filter by agent ID" },
+        sessionId: { type: "string", description: "Filter by session ID or evidence session ID" },
+        decisionId: { type: "string", description: "Filter by Decision ID" },
+        candidateId: { type: "string", description: "Filter by selected candidate ID" },
+        limit: { type: "number", description: "Max candidate rows (default 50, max 500)" },
+      },
+    },
+  },
+  {
     name: "memory_governance_delete",
     description: "Delete specific memories with audit trail.",
     inputSchema: {
@@ -950,8 +984,8 @@ export function getAllTools(): McpToolDef[] {
 }
 
 // default switched from "core" (8 essential tools) to "all"
-// (full 53-tool surface). README and plugin manifests have always
-// advertised 53 tools "in proxy mode"; the old default left OpenCode /
+// (full 55-tool surface). README and plugin manifests have always
+// advertised 55 tools "in proxy mode"; the old default left OpenCode /
 // Claude Code users seeing 8 with no indication the other tools existed.
 // Users who want the lean essentials can still set AGENTMEMORY_TOOLS=core.
 export function getVisibleTools(): McpToolDef[] {

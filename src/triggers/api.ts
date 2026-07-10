@@ -1,5 +1,5 @@
 import { TriggerAction, type ISdk, type ApiRequest } from "iii-sdk";
-import type { Session, CompressedObservation, HookPayload, CommitLink, SessionSummary } from "../types.js";
+import type { Session, CompressedObservation, HookPayload, CommitLink, SessionSummary, DecisionAudit, DecisionCandidateQueue } from "../types.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
@@ -13,6 +13,13 @@ import { renderViewerDocument } from "../viewer/document.js";
 import { getBoundViewerPort, getViewerSkipped } from "../viewer/server.js";
 import { MAX_FILES_UPPER_BOUND } from "../functions/replay.js";
 import { logger } from "../logger.js";
+import {
+  filterDecisionAudits,
+  filterDecisionCandidates,
+  nonEmptyFilterValue,
+  parseDecisionAuditLimit,
+  parseDecisionCandidateLimit,
+} from "../functions/decision-diagnostics.js";
 import {
   isGraphExtractionEnabled,
   isConsolidationEnabled,
@@ -1715,6 +1722,56 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::audit",
     config: { api_path: "/agentmemory/audit", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::decision-audit",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const params = req.query_params || {};
+      const audits = await kv.list<DecisionAudit>(KV.decisionAudit);
+      const filtered = filterDecisionAudits(audits, {
+        mode: nonEmptyFilterValue(params["mode"]),
+        action: nonEmptyFilterValue(params["action"]),
+        sourceFunction: nonEmptyFilterValue(params["sourceFunction"]),
+        insertionPoint: nonEmptyFilterValue(params["insertionPoint"]),
+        project: nonEmptyFilterValue(params["project"]),
+        agentId: nonEmptyFilterValue(params["agentId"]),
+        sessionId: nonEmptyFilterValue(params["sessionId"]),
+        limit: parseDecisionAuditLimit(params["limit"]),
+      });
+      return { status_code: 200, body: { success: true, audits: filtered, count: filtered.length } };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::decision-audit",
+    config: { api_path: "/agentmemory/decision/audit", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::decision-candidates",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const params = req.query_params || {};
+      const candidates = await kv.list<DecisionCandidateQueue>(KV.decisionCandidates);
+      const filtered = filterDecisionCandidates(candidates, {
+        kind: nonEmptyFilterValue(params["kind"]),
+        status: nonEmptyFilterValue(params["status"]),
+        project: nonEmptyFilterValue(params["project"]),
+        agentId: nonEmptyFilterValue(params["agentId"]),
+        sessionId: nonEmptyFilterValue(params["sessionId"]),
+        decisionId: nonEmptyFilterValue(params["decisionId"]),
+        candidateId: nonEmptyFilterValue(params["candidateId"]),
+        limit: parseDecisionCandidateLimit(params["limit"]),
+      });
+      return { status_code: 200, body: { success: true, candidates: filtered, count: filtered.length } };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::decision-candidates",
+    config: { api_path: "/agentmemory/decision/candidates", http_method: "GET" },
   });
 
   sdk.registerFunction("api::governance-delete", 

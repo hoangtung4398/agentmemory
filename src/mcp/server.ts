@@ -7,10 +7,21 @@ import type {
   Session,
   GraphNode,
   GraphEdge,
+  DecisionAudit,
+  DecisionCandidateQueue,
 } from "../types.js";
 import { getVisibleTools } from "./tools-registry.js";
 import { timingSafeCompare } from "../auth.js";
 import { getAgentId, isAgentScopeIsolated } from "../config.js";
+import {
+  compactDecisionAudit,
+  compactDecisionCandidate,
+  filterDecisionCandidates,
+  filterDecisionAudits,
+  nonEmptyFilterValue,
+  parseDecisionAuditLimit,
+  parseDecisionCandidateLimit,
+} from "../functions/decision-diagnostics.js";
 
 type McpResponse = {
   status_code: number;
@@ -589,6 +600,80 @@ export function registerMcpEndpoints(
                 status_code: 200,
                 body: {
                   content: [{ type: "text", text: "Audit query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_decision_audit": {
+            try {
+              const audits = await kv.list<DecisionAudit>(KV.decisionAudit);
+              const filtered = filterDecisionAudits(audits, {
+                mode: nonEmptyFilterValue(args.mode),
+                action: nonEmptyFilterValue(args.action),
+                sourceFunction: nonEmptyFilterValue(args.sourceFunction),
+                insertionPoint: nonEmptyFilterValue(args.insertionPoint),
+                project: nonEmptyFilterValue(args.project),
+                agentId: nonEmptyFilterValue(args.agentId),
+                sessionId: nonEmptyFilterValue(args.sessionId),
+                limit: parseDecisionAuditLimit(args.limit),
+              });
+              const result = {
+                success: true,
+                count: filtered.length,
+                audits: filtered.map(compactDecisionAudit),
+              };
+              return {
+                status_code: 200,
+                body: {
+                  content: [
+                    { type: "text", text: JSON.stringify(result, null, 2) },
+                  ],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Decision audit query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_decision_candidates": {
+            try {
+              const candidates = await kv.list<DecisionCandidateQueue>(KV.decisionCandidates);
+              const filtered = filterDecisionCandidates(candidates, {
+                kind: nonEmptyFilterValue(args.kind),
+                status: nonEmptyFilterValue(args.status),
+                project: nonEmptyFilterValue(args.project),
+                agentId: nonEmptyFilterValue(args.agentId),
+                sessionId: nonEmptyFilterValue(args.sessionId),
+                decisionId: nonEmptyFilterValue(args.decisionId),
+                candidateId: nonEmptyFilterValue(args.candidateId),
+                limit: parseDecisionCandidateLimit(args.limit),
+              });
+              const result = {
+                success: true,
+                count: filtered.length,
+                candidates: filtered.map(compactDecisionCandidate),
+              };
+              return {
+                status_code: 200,
+                body: {
+                  content: [
+                    { type: "text", text: JSON.stringify(result, null, 2) },
+                  ],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Decision candidate query failed" }],
                   isError: true,
                 },
               };
