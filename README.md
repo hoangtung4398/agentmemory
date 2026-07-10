@@ -236,6 +236,7 @@ npx @agentmemory/agentmemory
 
 Latest release notes: [CHANGELOG.md](CHANGELOG.md). Decision Engine rollout
 defaults and diagnostics: [docs/decision-engine-milestone.md](docs/decision-engine-milestone.md).
+Future Skill / Self-Improvement Layer design: [docs/skill-layer-design.md](docs/skill-layer-design.md).
 
 ---
 
