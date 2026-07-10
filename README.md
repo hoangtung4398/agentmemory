@@ -234,7 +234,8 @@ You explain the same architecture every session. You re-discover the same bugs. 
 npx @agentmemory/agentmemory
 ```
 
-Latest release notes: [CHANGELOG.md](CHANGELOG.md).
+Latest release notes: [CHANGELOG.md](CHANGELOG.md). Decision Engine rollout
+defaults and diagnostics: [docs/decision-engine-milestone.md](docs/decision-engine-milestone.md).
 
 ---
 
