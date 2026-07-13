@@ -1,5 +1,5 @@
 import { TriggerAction, type ISdk, type ApiRequest } from "iii-sdk";
-import type { Session, CompressedObservation, HookPayload, CommitLink, SessionSummary, DecisionAudit, DecisionCandidateQueue } from "../types.js";
+import type { Session, CompressedObservation, HookPayload, CommitLink, SessionSummary, DecisionAudit, DecisionCandidateQueue, AgentSkill } from "../types.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
@@ -21,6 +21,11 @@ import {
   parseDecisionCandidateLimit,
 } from "../functions/decision-diagnostics.js";
 import {
+  filterAgentSkills,
+  nonEmptySkillFilterValue,
+  parseSkillDiagnosticsLimit,
+} from "../functions/skill-diagnostics.js";
+import {
   isGraphExtractionEnabled,
   isConsolidationEnabled,
   isAutoCompressEnabled,
@@ -29,6 +34,7 @@ import {
   detectLlmProviderKind,
   getAgentId,
   isAgentScopeIsolated,
+  loadSkillConfig,
 } from "../config.js";
 
 type Response = {
@@ -114,6 +120,15 @@ function reflectDisabledResponse(): Response {
     flag: "AGENTMEMORY_REFLECT",
     enableHow: "Set AGENTMEMORY_REFLECT=true (in ~/.agentmemory/.env or the shell) and restart. Requires AGENTMEMORY_SLOTS=true.",
     docsHref: "https://github.com/rohitg00/agentmemory#memory-slots",
+  });
+}
+
+function skillDiagnosticsDisabledResponse(): Response {
+  return flagDisabledResponse({
+    error: "Agent skill diagnostics not enabled",
+    flag: "AGENTMEMORY_SKILL_DIAGNOSTICS",
+    enableHow: "Set AGENTMEMORY_SKILLS=true. Skill diagnostics are then enabled by default, or set AGENTMEMORY_SKILL_DIAGNOSTICS=true explicitly and restart.",
+    docsHref: "https://github.com/rohitg00/agentmemory/blob/main/docs/skill-layer-design.md",
   });
 }
 
@@ -1772,6 +1787,31 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::decision-candidates",
     config: { api_path: "/agentmemory/decision/candidates", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::skills",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const skillConfig = loadSkillConfig();
+      if (!skillConfig.diagnosticsEnabled) return skillDiagnosticsDisabledResponse();
+      const params = req.query_params || {};
+      const skills = await kv.list<AgentSkill>(KV.skills);
+      const filtered = filterAgentSkills(skills, {
+        status: nonEmptySkillFilterValue(params["status"]),
+        project: nonEmptySkillFilterValue(params["project"]),
+        agentId: nonEmptySkillFilterValue(params["agentId"]),
+        concept: nonEmptySkillFilterValue(params["concept"]),
+        file: nonEmptySkillFilterValue(params["file"]),
+        limit: parseSkillDiagnosticsLimit(params["limit"], skillConfig.diagnosticsLimit),
+      });
+      return { status_code: 200, body: { success: true, skills: filtered, count: filtered.length } };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::skills",
+    config: { api_path: "/agentmemory/skills", http_method: "GET" },
   });
 
   sdk.registerFunction("api::governance-delete", 

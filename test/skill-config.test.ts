@@ -1,0 +1,114 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const ENV_KEYS = [
+  "AGENTMEMORY_SKILLS",
+  "AGENTMEMORY_SKILL_DIAGNOSTICS",
+  "AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT",
+];
+
+const ORIGINAL_HOME = process.env["HOME"];
+const ORIGINAL_USERPROFILE = process.env["USERPROFILE"];
+const ORIGINAL: Record<string, string | undefined> = {};
+
+let sandboxHome: string;
+
+async function freshConfig() {
+  vi.resetModules();
+  return await import("../src/config.js");
+}
+
+function writeEnv(contents: string): void {
+  const dir = join(sandboxHome, ".agentmemory");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, ".env"), contents);
+}
+
+describe("AgentSkill read model configuration", () => {
+  beforeEach(() => {
+    sandboxHome = mkdtempSync(join(import.meta.dirname, "skill-config-"));
+    process.env["HOME"] = sandboxHome;
+    process.env["USERPROFILE"] = sandboxHome;
+    for (const key of ENV_KEYS) {
+      ORIGINAL[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_HOME === undefined) delete process.env["HOME"];
+    else process.env["HOME"] = ORIGINAL_HOME;
+    if (ORIGINAL_USERPROFILE === undefined) delete process.env["USERPROFILE"];
+    else process.env["USERPROFILE"] = ORIGINAL_USERPROFILE;
+    for (const key of ENV_KEYS) {
+      if (ORIGINAL[key] === undefined) delete process.env[key];
+      else process.env[key] = ORIGINAL[key];
+    }
+    rmSync(sandboxHome, { recursive: true, force: true });
+  });
+
+  it("disables skills and diagnostics by default", async () => {
+    writeEnv("");
+    const { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toEqual({
+      enabled: false,
+      diagnosticsEnabled: false,
+      diagnosticsLimit: 50,
+    });
+  });
+
+  it("enables diagnostics by default when skills are explicitly enabled", async () => {
+    process.env["AGENTMEMORY_SKILLS"] = "1";
+    const { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toEqual({
+      enabled: true,
+      diagnosticsEnabled: true,
+      diagnosticsLimit: 50,
+    });
+  });
+
+  it("does not enable diagnostics when skills are disabled", async () => {
+    process.env["AGENTMEMORY_SKILLS"] = "false";
+    process.env["AGENTMEMORY_SKILL_DIAGNOSTICS"] = "true";
+    const { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      diagnosticsEnabled: false,
+    });
+  });
+
+  it("allows diagnostics to be explicitly disabled and clamps its limit", async () => {
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    process.env["AGENTMEMORY_SKILL_DIAGNOSTICS"] = "0";
+    process.env["AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT"] = "0";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toEqual({
+      enabled: true,
+      diagnosticsEnabled: false,
+      diagnosticsLimit: 1,
+    });
+
+    process.env["AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT"] = "900";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig().diagnosticsLimit).toBe(500);
+  });
+
+  it("reads the additive flags from ~/.agentmemory/.env", async () => {
+    writeEnv([
+      "AGENTMEMORY_SKILLS=true",
+      "AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT=23",
+    ].join("\n"));
+    const { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toEqual({
+      enabled: true,
+      diagnosticsEnabled: true,
+      diagnosticsLimit: 23,
+    });
+  });
+});

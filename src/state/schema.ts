@@ -75,6 +75,7 @@ export const KV = {
   decision: "mem:decision",
   decisionAudit: "mem:decision:audit",
   decisionCandidates: "mem:decision:candidates",
+  skills: "mem:skills",
 } as const;
 
 export const STREAM = {
