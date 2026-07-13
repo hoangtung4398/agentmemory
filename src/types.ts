@@ -370,6 +370,12 @@ export interface DecisionConfig {
   enforceIgnoreMinConfidence: number;
 }
 
+export interface SkillConfig {
+  enabled: boolean;
+  diagnosticsEnabled: boolean;
+  diagnosticsLimit: number;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
@@ -727,6 +733,37 @@ export interface ProceduralMemory {
   strength: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type AgentSkillStatus = "active" | "retired" | "superseded";
+
+export interface AgentSkill {
+  id: string;
+  name: string;
+  triggerCondition: string;
+  steps: string[];
+  expectedOutcome: string;
+  antiPatterns: string[];
+  project?: string;
+  agentId?: string;
+  files: string[];
+  concepts: string[];
+  confidence: number;
+  strength: number;
+  usageCount: number;
+  successCount: number;
+  failureCount: number;
+  sourceProceduralMemoryIds: string[];
+  sourceCandidateIds: string[];
+  sourceObservationIds: string[];
+  sourceSessionIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  lastReinforcedAt?: string;
+  status: AgentSkillStatus;
+  supersedes?: string;
+  version: number;
 }
 
 export interface TeamConfig {

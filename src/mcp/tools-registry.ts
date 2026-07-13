@@ -365,6 +365,21 @@ export const V040_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "memory_skills",
+    description: "Inspect future AgentSkill diagnostics without mutating memory state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by skill status: active, retired, or superseded" },
+        project: { type: "string", description: "Filter by project" },
+        agentId: { type: "string", description: "Filter by agent ID" },
+        concept: { type: "string", description: "Filter by exact concept" },
+        file: { type: "string", description: "Filter by exact file path" },
+        limit: { type: "number", description: "Max skill rows (default from AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT, max 500)" },
+      },
+    },
+  },
+  {
     name: "memory_governance_delete",
     description: "Delete specific memories with audit trail.",
     inputSchema: {
@@ -984,8 +999,8 @@ export function getAllTools(): McpToolDef[] {
 }
 
 // default switched from "core" (8 essential tools) to "all"
-// (full 55-tool surface). README and plugin manifests have always
-// advertised 55 tools "in proxy mode"; the old default left OpenCode /
+// (full 56-tool surface). README and plugin manifests have always
+// advertised 56 tools "in proxy mode"; the old default left OpenCode /
 // Claude Code users seeing 8 with no indication the other tools existed.
 // Users who want the lean essentials can still set AGENTMEMORY_TOOLS=core.
 export function getVisibleTools(): McpToolDef[] {

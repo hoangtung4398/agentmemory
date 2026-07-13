@@ -9,10 +9,11 @@ import type {
   GraphEdge,
   DecisionAudit,
   DecisionCandidateQueue,
+  AgentSkill,
 } from "../types.js";
 import { getVisibleTools } from "./tools-registry.js";
 import { timingSafeCompare } from "../auth.js";
-import { getAgentId, isAgentScopeIsolated } from "../config.js";
+import { getAgentId, isAgentScopeIsolated, loadSkillConfig } from "../config.js";
 import {
   compactDecisionAudit,
   compactDecisionCandidate,
@@ -22,6 +23,12 @@ import {
   parseDecisionAuditLimit,
   parseDecisionCandidateLimit,
 } from "../functions/decision-diagnostics.js";
+import {
+  compactAgentSkill,
+  filterAgentSkills,
+  nonEmptySkillFilterValue,
+  parseSkillDiagnosticsLimit,
+} from "../functions/skill-diagnostics.js";
 
 type McpResponse = {
   status_code: number;
@@ -674,6 +681,59 @@ export function registerMcpEndpoints(
                 status_code: 200,
                 body: {
                   content: [{ type: "text", text: "Decision candidate query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_skills": {
+            const skillConfig = loadSkillConfig();
+            if (!skillConfig.diagnosticsEnabled) {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                      success: false,
+                      error: "Agent skill diagnostics not enabled",
+                      flag: "AGENTMEMORY_SKILL_DIAGNOSTICS",
+                      enableHow: "Set AGENTMEMORY_SKILLS=true and restart.",
+                    }, null, 2),
+                  }],
+                  isError: true,
+                },
+              };
+            }
+            try {
+              const skills = await kv.list<AgentSkill>(KV.skills);
+              const filtered = filterAgentSkills(skills, {
+                status: nonEmptySkillFilterValue(args.status),
+                project: nonEmptySkillFilterValue(args.project),
+                agentId: nonEmptySkillFilterValue(args.agentId),
+                concept: nonEmptySkillFilterValue(args.concept),
+                file: nonEmptySkillFilterValue(args.file),
+                limit: parseSkillDiagnosticsLimit(args.limit, skillConfig.diagnosticsLimit),
+              });
+              const result = {
+                success: true,
+                count: filtered.length,
+                skills: filtered.map(compactAgentSkill),
+              };
+              return {
+                status_code: 200,
+                body: {
+                  content: [
+                    { type: "text", text: JSON.stringify(result, null, 2) },
+                  ],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Agent skill diagnostics query failed" }],
                   isError: true,
                 },
               };

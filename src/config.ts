@@ -12,6 +12,7 @@ import type {
   DecisionConfig,
   DecisionMode,
   DecisionProvider,
+  SkillConfig,
 } from "./types.js";
 
 function safeParseInt(value: string | undefined, fallback: number): number {
@@ -324,6 +325,25 @@ export function getDecisionCandidateMinEvidence(): number {
     1,
     10,
   );
+}
+
+export function loadSkillConfig(): SkillConfig {
+  const env = getMergedEnv();
+  const enabled = parseBooleanEnv(env["AGENTMEMORY_SKILLS"], false);
+
+  return {
+    enabled,
+    diagnosticsEnabled: enabled && parseBooleanEnv(
+      env["AGENTMEMORY_SKILL_DIAGNOSTICS"],
+      true,
+    ),
+    diagnosticsLimit: parseClampedInt(
+      env["AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT"],
+      50,
+      1,
+      500,
+    ),
+  };
 }
 
 export function isDropStaleIndexEnabled(): boolean {

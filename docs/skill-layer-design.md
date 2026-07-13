@@ -2,9 +2,10 @@
 
 ## Status and Scope
 
-This is the design document for PR11. It describes a future, opt-in Skill /
-Self-Improvement Layer for AgentMemory. It does not add runtime behavior,
-storage, configuration, APIs, MCP tools, hooks, tests, or migrations.
+This is the PR11 design document for an opt-in Skill / Self-Improvement Layer
+for AgentMemory. PR12 now implements only its additive, default-off read model
+and diagnostics scaffold; it does not add skill creation, promotion, injection,
+feedback, or enforcement.
 
 The Decision Engine PR1-PR10 and its milestone documentation are already in
 `main`. This document designs how durable procedural evidence could become
@@ -44,7 +45,7 @@ advisory instruction that can be recalled predictably.
 | `ProceduralMemory` | Consolidated workflow with trigger, steps, outcome, frequency, scope, strength, and source evidence. | Primary evidence source for future promotion; it remains useful even when no skill exists. |
 | `Lesson` | Content-fingerprinted learning artifact with confidence, reinforcement, source ids, decay, and soft deletion. | Can supply corrections or anti-patterns; never silently becomes a skill. |
 | `Insight` | Consolidated interpretation across memories, lessons, and crystals. | May explain usefulness or reveal a conflict; it is not executable guidance. |
-| Future `AgentSkill` | Not implemented. | Separate validated, advisory projection with explicit provenance and feedback. |
+| `AgentSkill` (PR12 scaffold) | Additive, default-off type, scope, and read-only diagnostics. | Promotion and advisory recall remain future work. |
 
 ```mermaid
 flowchart LR
@@ -105,8 +106,8 @@ and instruction have different lifecycles, feedback, and safety requirements.
 
 ## Proposed AgentSkill Schema
 
-This is a design-only schema. It must not be added to `src/types.ts` or
-`src/state/schema.ts` in PR11.
+This schema was design-only in PR11. PR12 now adds it to `src/types.ts` and
+declares its dedicated KV scope, but no code creates or mutates rows yet.
 
 ```ts
 type AgentSkillStatus = "active" | "retired" | "superseded";
@@ -153,9 +154,8 @@ type AgentSkill = {
 | Provenance | Source id arrays | Makes each promoted instruction traceable to its evidence. |
 | Lifecycle | Timestamps, `status`, `supersedes`, `version` | Supports reinforcement, retirement, and replacement without rewriting history. |
 
-If implemented later, the entity should live in a new scope such as
-`mem:skills`. The scope name is provisional; PR11 creates neither the scope
-nor any row in it.
+PR12 declares the dedicated `mem:skills` scope. It does not create rows in the
+scope; future promotion remains explicitly opt-in.
 
 ## Skill Lifecycle
 
@@ -303,22 +303,39 @@ enforcement.
 | No self-modification | A skill cannot change itself, repository files, configuration, hooks, tools, or memories without explicit user instruction. |
 | Auditability | Future promotion, recall, feedback, retirement, and supersession retain source references and append-style diagnostics. |
 
+## PR12 Read Model Scaffold
+
+PR12 adds the additive `AgentSkill` type, `mem:skills` scope constant, and
+read-only diagnostics surfaces. They remain disabled unless
+`AGENTMEMORY_SKILLS=true` (default `false`); no PR12 path writes skill rows,
+promotes procedures, injects context, reinforces feedback, or changes existing
+memory pipelines.
+
+When enabled, `GET /agentmemory/skills` and `memory_skills` only inspect
+`mem:skills`. Diagnostics are independently disableable with
+`AGENTMEMORY_SKILL_DIAGNOSTICS` (default `true` only when skills are enabled),
+and their limit defaults to 50 and is bounded to 1..500 by
+`AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT`.
+
+When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
+`503` feature-disabled response before reading `mem:skills`; `memory_skills`
+returns the corresponding MCP diagnostic. This is expected default-off behavior,
+not a memory-server failure.
+
 ## Conservative Implementation Roadmap
 
-The following PRs are future work and are not included in PR11:
+The following PRs remain future work after PR12:
 
-1. **PR12: Skill read model and diagnostics only.** Add a default-off,
-   read-only view and diagnostics with no promotion or injection.
-2. **PR13: Promote ProceduralMemory to skill candidate behind explicit
+1. **PR13: Promote ProceduralMemory to skill candidate behind explicit
    configuration.** Add opt-in promotion into a new skill scope with
    provenance and no injection.
-3. **PR14: Skill recall diagnostics.** Explain why a future skill matched,
+2. **PR14: Skill recall diagnostics.** Explain why a future skill matched,
    was skipped, or was excluded by scope or budget.
-4. **PR15: Skill context injection in advisory mode.** Append bounded,
+3. **PR15: Skill context injection in advisory mode.** Append bounded,
    labeled checklist context without changing current retrieval behavior.
-5. **PR16: Skill reinforcement metrics.** Add explicit success/failure,
+4. **PR16: Skill reinforcement metrics.** Add explicit success/failure,
    correction, staleness, retirement, and supersession accounting.
-6. **Later: LLM-assisted skill extraction in shadow mode only.** It may
+5. **Later: LLM-assisted skill extraction in shadow mode only.** It may
    propose candidates but cannot promote, inject, or enforce without
    separately approved validation and compatibility work.
 
