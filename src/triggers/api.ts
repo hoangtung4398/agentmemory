@@ -1814,6 +1814,34 @@ export function registerApiTriggers(
     config: { api_path: "/agentmemory/skills", http_method: "GET" },
   });
 
+  sdk.registerFunction("api::skill-promotion-eligibility",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const skillConfig = loadSkillConfig();
+      if (!skillConfig.diagnosticsEnabled) return skillDiagnosticsDisabledResponse();
+      const proceduralMemoryId = nonEmptySkillFilterValue(
+        req.query_params?.["proceduralMemoryId"],
+      );
+      if (!proceduralMemoryId) {
+        return { status_code: 400, body: { error: "proceduralMemoryId is required" } };
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::skill-promotion-eligibility",
+        payload: { proceduralMemoryId },
+      });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::skill-promotion-eligibility",
+    config: {
+      api_path: "/agentmemory/skills/promotion-eligibility",
+      http_method: "GET",
+    },
+  });
+
   sdk.registerFunction("api::governance-delete", 
     async (
       req: ApiRequest<{ memoryIds: string[]; reason?: string }>,

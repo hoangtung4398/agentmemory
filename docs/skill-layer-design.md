@@ -319,8 +319,12 @@ PR13a does not infer, synthesize, or write an outcome. The current
 consolidation pipeline may create procedural rows without it, and improving
 that extraction remains future separately reviewed work.
 
-When enabled, `GET /agentmemory/skills` and `memory_skills` only inspect
-`mem:skills`. Diagnostics are independently disableable with
+When enabled, `GET /agentmemory/skills` and `memory_skills` inspect `mem:skills`.
+`GET /agentmemory/skills/promotion-eligibility` and
+`memory_skill_promotion_eligibility` evaluate one `ProceduralMemory` against
+the same promotion policy without creating an `AgentSkill`, mutating either
+scope, or calling `mem::skill-promote`. Direct `mem::skill-promote` remains
+the only skill write path. Diagnostics are independently disableable with
 `AGENTMEMORY_SKILL_DIAGNOSTICS` (default `true` only when skills are enabled),
 and their limit defaults to 50 and is bounded to 1..500 by
 `AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT`.
@@ -329,6 +333,21 @@ When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
 returns the corresponding MCP diagnostic. This is expected default-off behavior,
 not a memory-server failure.
+
+### PR13b Promotion Eligibility Diagnostics
+
+PR13b adds only a read-only evaluator. It uses the same pure policy as direct
+promotion and reports `promotion_disabled`, missing name/trigger/outcome,
+insufficient steps, secret-heavy content, insufficient strength, insufficient
+independent evidence, or `already_promoted`. A valid procedure with promotion
+disabled reports `promotion_disabled` rather than being described as malformed.
+
+The evaluator reads the `ProceduralMemory` first and reads `mem:skills` only
+when the procedure otherwise satisfies the policy, solely to report an active
+source-lineage match. It never writes `mem:skills`, `KV.procedural`, candidate
+queues, indexes, timestamps, counters, or statuses. `ProceduralMemory` has no
+status field in the current KV shape, so source existence is the current source
+lifecycle check; PR13b does not invent or persist a new status.
 
 ## Conservative Implementation Roadmap
 

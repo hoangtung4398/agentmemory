@@ -83,6 +83,7 @@ import { registerReflectFunctions } from "./functions/reflect.js";
 import { registerWorkingMemoryFunctions } from "./functions/working-memory.js";
 import { registerSkillExtractFunctions } from "./functions/skill-extract.js";
 import { registerSkillPromotionFunction } from "./functions/skill-promotion.js";
+import { registerSkillPromotionEligibilityFunction } from "./functions/skill-promotion-eligibility.js";
 import { registerSlidingWindowFunction } from "./functions/sliding-window.js";
 import { registerQueryExpansionFunction } from "./functions/query-expansion.js";
 import { registerTemporalGraphFunctions } from "./functions/temporal-graph.js";
@@ -328,6 +329,7 @@ async function main() {
   registerWorkingMemoryFunctions(sdk, kv, config.tokenBudget);
   registerSkillExtractFunctions(sdk, kv, provider);
   registerSkillPromotionFunction(sdk, kv);
+  registerSkillPromotionEligibilityFunction(sdk, kv);
   registerCascadeFunction(sdk, kv);
 
   registerSlidingWindowFunction(sdk, kv, provider);
@@ -522,7 +524,7 @@ async function main() {
     `Ready. ${embeddingProvider ? "Triple-stream (BM25+Vector+Graph)" : "BM25+Graph"} search active.`,
   );
   bootLog(
-    `REST API: 131 endpoints at http://localhost:${config.restPort}/agentmemory/*`,
+    `REST API: 132 endpoints at http://localhost:${config.restPort}/agentmemory/*`,
   );
   bootLog(
     `MCP surface (opt-in via \`npx @agentmemory/mcp\`): ${getAllTools().length} tools · 6 resources · 3 prompts`,
