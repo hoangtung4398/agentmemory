@@ -374,6 +374,9 @@ export interface SkillConfig {
   enabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
+  promotionEnabled: boolean;
+  promotionMinStrength: number;
+  promotionMinEvidence: number;
 }
 
 export interface SearchResult {
@@ -840,6 +843,7 @@ export interface AuditEntry {
     | "reflect"
     | "insight_search"
     | "skill_extract"
+    | "skill_promote"
     | "core_add"
     | "core_remove"
     | "auto_page"

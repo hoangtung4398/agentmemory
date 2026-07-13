@@ -306,10 +306,18 @@ enforcement.
 ## PR12 Read Model Scaffold
 
 PR12 adds the additive `AgentSkill` type, `mem:skills` scope constant, and
-read-only diagnostics surfaces. They remain disabled unless
+read-only diagnostics surfaces. PR13a adds an internal, direct-only
+`mem::skill-promote` function that can promote one eligible `ProceduralMemory`
+when both skill flags are explicitly enabled. It remains disabled unless
 `AGENTMEMORY_SKILLS=true` (default `false`); no PR12 path writes skill rows,
-promotes procedures, injects context, reinforces feedback, or changes existing
-memory pipelines.
+and PR13a does not automatically promote procedures, inject context, reinforce
+feedback, or change existing memory pipelines.
+
+Direct promotion requires a non-empty `expectedOutcome`. A
+`ProceduralMemory` without that optional source field is safely rejected;
+PR13a does not infer, synthesize, or write an outcome. The current
+consolidation pipeline may create procedural rows without it, and improving
+that extraction remains future separately reviewed work.
 
 When enabled, `GET /agentmemory/skills` and `memory_skills` only inspect
 `mem:skills`. Diagnostics are independently disableable with
