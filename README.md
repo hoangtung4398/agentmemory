@@ -1488,6 +1488,9 @@ Create `~/.agentmemory/.env`:
 # AGENTMEMORY_SKILLS=false      # OFF by default. Enables only the future AgentSkill read model and diagnostics.
 # AGENTMEMORY_SKILL_DIAGNOSTICS=true # Defaults to true only when skills are enabled.
 # AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT=50 # Bounded to 1..500 rows.
+# AGENTMEMORY_SKILL_PROMOTION=false # Enables direct mem::skill-promote only when skills are enabled; no automatic promotion.
+# AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH=0.7 # Bounded to the ProceduralMemory 0..1 strength scale.
+# AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE=2 # Bounded to 1..10 independent provenance ids.
 # LESSON_DECAY_ENABLED=true
 # OBSIDIAN_AUTO_EXPORT=false
 # AGENTMEMORY_EXPORT_ROOT=~/.agentmemory

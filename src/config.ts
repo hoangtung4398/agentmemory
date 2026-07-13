@@ -265,6 +265,19 @@ function parseClampedInt(
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 }
 
+function parseClampedNumber(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = value === undefined || value.trim().length === 0
+    ? fallback
+    : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 export function loadDecisionConfig(): DecisionConfig {
   const env = getMergedEnv();
   const mode = parseDecisionMode(env["AGENTMEMORY_DECISION_MODE"]);
@@ -330,6 +343,10 @@ export function getDecisionCandidateMinEvidence(): number {
 export function loadSkillConfig(): SkillConfig {
   const env = getMergedEnv();
   const enabled = parseBooleanEnv(env["AGENTMEMORY_SKILLS"], false);
+  const promotionEnabled = enabled && parseBooleanEnv(
+    env["AGENTMEMORY_SKILL_PROMOTION"],
+    false,
+  );
 
   return {
     enabled,
@@ -342,6 +359,19 @@ export function loadSkillConfig(): SkillConfig {
       50,
       1,
       500,
+    ),
+    promotionEnabled,
+    promotionMinStrength: parseClampedNumber(
+      env["AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH"],
+      0.7,
+      0,
+      1,
+    ),
+    promotionMinEvidence: parseClampedInt(
+      env["AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE"],
+      2,
+      1,
+      10,
     ),
   };
 }

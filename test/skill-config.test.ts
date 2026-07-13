@@ -6,6 +6,9 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILLS",
   "AGENTMEMORY_SKILL_DIAGNOSTICS",
   "AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT",
+  "AGENTMEMORY_SKILL_PROMOTION",
+  "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
+  "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
 ];
 
 const ORIGINAL_HOME = process.env["HOME"];
@@ -56,6 +59,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
+      promotionEnabled: false,
+      promotionMinStrength: 0.7,
+      promotionMinEvidence: 2,
     });
   });
 
@@ -67,6 +73,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
+      promotionEnabled: false,
+      promotionMinStrength: 0.7,
+      promotionMinEvidence: 2,
     });
   });
 
@@ -91,6 +100,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
+      promotionEnabled: false,
+      promotionMinStrength: 0.7,
+      promotionMinEvidence: 2,
     });
 
     process.env["AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT"] = "900";
@@ -109,6 +121,34 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
+      promotionEnabled: false,
+      promotionMinStrength: 0.7,
+      promotionMinEvidence: 2,
+    });
+  });
+
+  it("requires skills to enable promotion and clamps promotion thresholds", async () => {
+    process.env["AGENTMEMORY_SKILL_PROMOTION"] = "1";
+    process.env["AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH"] = "2";
+    process.env["AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE"] = "0";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      promotionEnabled: false,
+      promotionMinStrength: 1,
+      promotionMinEvidence: 1,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    process.env["AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH"] = "-1";
+    process.env["AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE"] = "99";
+    ({ loadSkillConfig } = await freshConfig());
+
+    expect(loadSkillConfig()).toMatchObject({
+      promotionEnabled: true,
+      promotionMinStrength: 0,
+      promotionMinEvidence: 10,
     });
   });
 });
