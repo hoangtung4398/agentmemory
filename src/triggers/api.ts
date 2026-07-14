@@ -26,6 +26,12 @@ import {
   parseSkillDiagnosticsLimit,
 } from "../functions/skill-diagnostics.js";
 import {
+  isSkillPromotionInventoryBoolean,
+  isSkillPromotionInventoryLimit,
+  parseSkillPromotionInventoryBoolean,
+} from "../functions/skill-promotion-inventory.js";
+import { isSkillPromotionReasonCode } from "../functions/skill-promotion-policy.js";
+import {
   isGraphExtractionEnabled,
   isConsolidationEnabled,
   isAutoCompressEnabled,
@@ -1838,6 +1844,58 @@ export function registerApiTriggers(
     function_id: "api::skill-promotion-eligibility",
     config: {
       api_path: "/agentmemory/skills/promotion-eligibility",
+      http_method: "GET",
+    },
+  });
+
+  sdk.registerFunction("api::skill-promotion-inventory",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const skillConfig = loadSkillConfig();
+      if (!skillConfig.diagnosticsEnabled) return skillDiagnosticsDisabledResponse();
+      const params = req.query_params || {};
+      for (const name of [
+        "policyEligible",
+        "currentlyPromotable",
+        "alreadyPromoted",
+        "promotionStateResolved",
+      ] as const) {
+        if (!isSkillPromotionInventoryBoolean(params[name])) {
+          return { status_code: 400, body: { error: `${name} must be true or false` } };
+        }
+      }
+      for (const name of ["scanLimit", "limit"] as const) {
+        if (!isSkillPromotionInventoryLimit(params[name])) {
+          return { status_code: 400, body: { error: `${name} must be a number` } };
+        }
+      }
+      const reasonCode = nonEmptySkillFilterValue(params["reasonCode"]);
+      if (reasonCode && !isSkillPromotionReasonCode(reasonCode)) {
+        return { status_code: 400, body: { error: "reasonCode is invalid" } };
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::skill-promotion-inventory",
+        payload: {
+          policyEligible: parseSkillPromotionInventoryBoolean(params["policyEligible"]),
+          currentlyPromotable: parseSkillPromotionInventoryBoolean(params["currentlyPromotable"]),
+          alreadyPromoted: parseSkillPromotionInventoryBoolean(params["alreadyPromoted"]),
+          promotionStateResolved: parseSkillPromotionInventoryBoolean(
+            params["promotionStateResolved"],
+          ),
+          reasonCode,
+          scanLimit: params["scanLimit"],
+          limit: params["limit"],
+        },
+      });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::skill-promotion-inventory",
+    config: {
+      api_path: "/agentmemory/skills/promotion-inventory",
       http_method: "GET",
     },
   });

@@ -222,6 +222,33 @@ describe("skill promotion eligibility diagnostics", () => {
     }
   });
 
+  it("reports incomplete secret-bearing procedures without changing direct-promotion precedence", async () => {
+    enablePromotion();
+    const source = procedure({
+      id: "secret_missing_outcome",
+      name: "token=abcdefghijklmnopqrstuvwxyz",
+      expectedOutcome: undefined,
+    });
+    await kv.set(KV.procedural, source.id, source);
+    const before = kv.snapshot();
+    kv.resetTracking();
+
+    await expect(evaluate(source.id)).resolves.toMatchObject({
+      eligible: false,
+      policyEligible: false,
+      secretHeavy: true,
+      reasonCodes: expect.arrayContaining(["missing_expected_outcome", "secret_heavy"]),
+    });
+    await expect(promote(source.id)).resolves.toEqual({
+      success: true,
+      promoted: false,
+      reason: "procedural memory is missing required skill details",
+    });
+
+    expect(kv.snapshot()).toEqual(before);
+    expect(kv.writes).toEqual([]);
+  });
+
   it("reports an existing active skill without creating or changing any row", async () => {
     enablePromotion();
     const source = procedure();

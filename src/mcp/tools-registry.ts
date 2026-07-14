@@ -391,6 +391,22 @@ export const V040_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "memory_skill_promotion_inventory",
+    description: "Inspect read-only ProceduralMemory promotion eligibility and source-lineage resolution without creating skills.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        policyEligible: { type: "boolean", description: "Filter by promotion policy eligibility" },
+        currentlyPromotable: { type: "boolean", description: "Filter by rows promotable under current runtime settings" },
+        alreadyPromoted: { type: "boolean", description: "Filter by active source-lineage skills" },
+        promotionStateResolved: { type: "boolean", description: "Filter by whether source-lineage state was conclusively resolved" },
+        reasonCode: { type: "string", description: "Filter by a promotion policy reason code" },
+        scanLimit: { type: "number", description: "Max ProceduralMemory rows scanned (default 500, max 5000)" },
+        limit: { type: "number", description: "Max inventory rows returned (default from AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT, max 500)" },
+      },
+    },
+  },
+  {
     name: "memory_governance_delete",
     description: "Delete specific memories with audit trail.",
     inputSchema: {
@@ -1010,8 +1026,8 @@ export function getAllTools(): McpToolDef[] {
 }
 
 // default switched from "core" (8 essential tools) to "all"
-// (full 57-tool surface). README and plugin manifests have always
-// advertised 57 tools "in proxy mode"; the old default left OpenCode /
+// (full 58-tool surface). README and plugin manifests have always
+// advertised 58 tools "in proxy mode"; the old default left OpenCode /
 // Claude Code users seeing 8 with no indication the other tools existed.
 // Users who want the lean essentials can still set AGENTMEMORY_TOOLS=core.
 export function getVisibleTools(): McpToolDef[] {

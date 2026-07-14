@@ -1,5 +1,5 @@
 import { stripPrivateData } from "./privacy.js";
-import type { SkillConfig, ProceduralMemory } from "../types.js";
+import type { AgentSkill, SkillConfig, ProceduralMemory } from "../types.js";
 
 export type SkillPromotionReasonCode =
   | "promotion_disabled"
@@ -14,7 +14,12 @@ export type SkillPromotionReasonCode =
 
 export interface SkillPromotionEligibility {
   eligible: boolean;
+  policyEligible: boolean;
+  currentlyPromotable: boolean;
+  alreadyPromoted: boolean;
+  promotionEnabled: boolean;
   reasonCodes: SkillPromotionReasonCode[];
+  policyReasonCodes: Exclude<SkillPromotionReasonCode, "promotion_disabled" | "already_promoted">[];
   reasons: string[];
   evidenceCount: number;
   requiredEvidence: number;
@@ -74,6 +79,28 @@ function reasonFor(code: SkillPromotionReasonCode): string {
   }
 }
 
+export function isSkillPromotionReasonCode(value: unknown): value is SkillPromotionReasonCode {
+  return typeof value === "string" && [
+    "promotion_disabled",
+    "missing_name",
+    "missing_trigger_condition",
+    "missing_expected_outcome",
+    "insufficient_steps",
+    "secret_heavy",
+    "insufficient_strength",
+    "insufficient_evidence",
+    "already_promoted",
+  ].includes(value);
+}
+
+export function matchesActiveSkillForProceduralMemory(
+  skill: AgentSkill,
+  proceduralMemoryId: string,
+): boolean {
+  return skill.status === "active" &&
+    skill.sourceProceduralMemoryIds.includes(proceduralMemoryId);
+}
+
 export function evaluateSkillPromotionEligibility(
   procedure: ProceduralMemory,
   config: SkillConfig,
@@ -90,27 +117,37 @@ export function evaluateSkillPromotionEligibility(
     ? sourceSessionIds.length
     : Math.max(sourceObservationIds.length, sourceCandidateIds.length);
   const strength = clampStrength(procedure.strength);
-  const secretHeavy = Boolean(name && triggerCondition && expectedOutcome) &&
-    stripPrivateData([name, triggerCondition, expectedOutcome, ...steps].join("\n")) !==
-      [name, triggerCondition, expectedOutcome, ...steps].join("\n");
-  const reasonCodes: SkillPromotionReasonCode[] = [];
+  const privacyPayload = [name, triggerCondition, expectedOutcome, ...steps]
+    .filter((value): value is string => value !== undefined)
+    .join("\n");
+  const secretHeavy = privacyPayload.length > 0 &&
+    stripPrivateData(privacyPayload) !== privacyPayload;
+  const policyReasonCodes: SkillPromotionEligibility["policyReasonCodes"] = [];
+  if (!name) policyReasonCodes.push("missing_name");
+  if (!triggerCondition) policyReasonCodes.push("missing_trigger_condition");
+  if (!expectedOutcome) policyReasonCodes.push("missing_expected_outcome");
+  if (steps.length < 2) policyReasonCodes.push("insufficient_steps");
+  if (secretHeavy) policyReasonCodes.push("secret_heavy");
+  if (strength < config.promotionMinStrength) policyReasonCodes.push("insufficient_strength");
+  if (evidenceCount < config.promotionMinEvidence) policyReasonCodes.push("insufficient_evidence");
 
-  if (!config.promotionEnabled) {
-    reasonCodes.push("promotion_disabled");
-  } else {
-    if (!name) reasonCodes.push("missing_name");
-    if (!triggerCondition) reasonCodes.push("missing_trigger_condition");
-    if (!expectedOutcome) reasonCodes.push("missing_expected_outcome");
-    if (steps.length < 2) reasonCodes.push("insufficient_steps");
-    if (secretHeavy) reasonCodes.push("secret_heavy");
-    if (strength < config.promotionMinStrength) reasonCodes.push("insufficient_strength");
-    if (evidenceCount < config.promotionMinEvidence) reasonCodes.push("insufficient_evidence");
-    if (reasonCodes.length === 0 && existingSkillId) reasonCodes.push("already_promoted");
-  }
+  const policyEligible = policyReasonCodes.length === 0;
+  const alreadyPromoted = existingSkillId !== undefined;
+  const currentlyPromotable = config.promotionEnabled && policyEligible && !alreadyPromoted;
+  const reasonCodes: SkillPromotionReasonCode[] = !config.promotionEnabled
+    ? ["promotion_disabled"]
+    : policyEligible && alreadyPromoted
+      ? ["already_promoted"]
+      : [...policyReasonCodes];
 
   return {
-    eligible: reasonCodes.length === 0,
+    eligible: currentlyPromotable,
+    policyEligible,
+    currentlyPromotable,
+    alreadyPromoted,
+    promotionEnabled: config.promotionEnabled,
     reasonCodes,
+    policyReasonCodes,
     reasons: reasonCodes.map(reasonFor),
     evidenceCount,
     requiredEvidence: config.promotionMinEvidence,

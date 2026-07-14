@@ -7,6 +7,7 @@ import type { StateKV } from "../state/kv.js";
 import type { AgentSkill, ProceduralMemory } from "../types.js";
 import {
   evaluateSkillPromotionEligibility,
+  matchesActiveSkillForProceduralMemory,
   nonEmptyString,
   promotionResultReason,
   uniqueStrings,
@@ -22,14 +23,6 @@ type SkillPromotionResult = {
 
 function skillIdentity(procedure: ProceduralMemory): string {
   return fingerprintId("skill", procedure.id);
-}
-
-function matchesExistingSkill(
-  skill: AgentSkill,
-  proceduralMemoryId: string,
-): boolean {
-  return skill.status === "active" &&
-    skill.sourceProceduralMemoryIds.includes(proceduralMemoryId);
 }
 
 export function registerSkillPromotionFunction(sdk: ISdk, kv: StateKV): void {
@@ -63,7 +56,7 @@ export function registerSkillPromotionFunction(sdk: ISdk, kv: StateKV): void {
         let existing: AgentSkill | undefined;
         try {
           existing = (await kv.list<AgentSkill>(KV.skills)).find((skill) =>
-            matchesExistingSkill(skill, procedure.id),
+            matchesActiveSkillForProceduralMemory(skill, procedure.id),
           );
         } catch {
           return { success: false, promoted: false, reason: "failed to inspect existing skills" };
