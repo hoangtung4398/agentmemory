@@ -1,11 +1,16 @@
 import type { ISdk } from "iii-sdk";
 import { loadSkillConfig } from "../config.js";
 import { safeAudit } from "./audit.js";
-import { stripPrivateData } from "./privacy.js";
 import { fingerprintId, KV } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { StateKV } from "../state/kv.js";
 import type { AgentSkill, ProceduralMemory } from "../types.js";
+import {
+  evaluateSkillPromotionEligibility,
+  nonEmptyString,
+  promotionResultReason,
+  uniqueStrings,
+} from "./skill-promotion-policy.js";
 
 type SkillPromotionResult = {
   success: boolean;
@@ -15,53 +20,8 @@ type SkillPromotionResult = {
   reason?: string;
 };
 
-function nonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-}
-
-function uniqueStrings(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map(nonEmptyString).filter((item): item is string => item !== undefined))];
-}
-
-function normalizedSteps(steps: unknown): string[] {
-  return uniqueStrings(steps);
-}
-
-function clampStrength(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.max(0, Math.min(1, value))
-    : 0;
-}
-
 function skillIdentity(procedure: ProceduralMemory): string {
   return fingerprintId("skill", procedure.id);
-}
-
-function hasSecretHeavyContent(values: string[]): boolean {
-  const source = values.join("\n");
-  return stripPrivateData(source) !== source;
-}
-
-function evidence(procedure: ProceduralMemory): {
-  sourceSessionIds: string[];
-  sourceObservationIds: string[];
-  sourceCandidateIds: string[];
-  count: number;
-} {
-  const sourceSessionIds = uniqueStrings(procedure.sourceSessionIds);
-  const sourceObservationIds = uniqueStrings(procedure.sourceObservationIds);
-  const sourceCandidateIds: string[] = [];
-  return {
-    sourceSessionIds,
-    sourceObservationIds,
-    sourceCandidateIds,
-    count: sourceSessionIds.length > 0
-      ? sourceSessionIds.length
-      : Math.max(sourceObservationIds.length, sourceCandidateIds.length),
-  };
 }
 
 function matchesExistingSkill(
@@ -95,28 +55,9 @@ export function registerSkillPromotionFunction(sdk: ISdk, kv: StateKV): void {
       if (!procedure) {
         return { success: false, promoted: false, reason: "procedural memory not found" };
       }
-      const name = nonEmptyString(procedure.name);
-      const triggerCondition = nonEmptyString(procedure.triggerCondition);
-      const expectedOutcome = nonEmptyString(procedure.expectedOutcome);
-      const steps = normalizedSteps(procedure.steps);
-      if (!name || !triggerCondition || !expectedOutcome) {
-        return { success: true, promoted: false, reason: "procedural memory is missing required skill details" };
-      }
-      if (steps.length < 2) {
-        return { success: true, promoted: false, reason: "procedural memory requires at least two meaningful steps" };
-      }
-      if (hasSecretHeavyContent([name, triggerCondition, expectedOutcome, ...steps])) {
-        return { success: true, promoted: false, reason: "procedural memory contains secret-heavy content" };
-      }
-
-      const strength = clampStrength(procedure.strength);
-      if (strength < config.promotionMinStrength) {
-        return { success: true, promoted: false, reason: "procedural memory strength is below the promotion threshold" };
-      }
-      const provenance = evidence(procedure);
-      if (provenance.count < config.promotionMinEvidence) {
-        return { success: true, promoted: false, reason: "procedural memory has insufficient independent evidence" };
-      }
+      const eligibility = evaluateSkillPromotionEligibility(procedure, config);
+      const policyReason = promotionResultReason(eligibility);
+      if (policyReason) return { success: true, promoted: false, reason: policyReason };
 
       return withKeyedLock(`skill-promote:${procedure.id}`, async () => {
         let existing: AgentSkill | undefined;
@@ -139,25 +80,25 @@ export function registerSkillPromotionFunction(sdk: ISdk, kv: StateKV): void {
         const now = new Date().toISOString();
         const skill: AgentSkill = {
           id: skillIdentity(procedure),
-          name,
-          triggerCondition,
-          steps,
-          expectedOutcome,
+          name: eligibility.name!,
+          triggerCondition: eligibility.triggerCondition!,
+          steps: eligibility.steps,
+          expectedOutcome: eligibility.expectedOutcome!,
           antiPatterns: [],
           files: [],
           concepts: uniqueStrings(procedure.concepts ?? procedure.tags),
           confidence: Math.min(
-            strength,
-            0.5 + Math.min(0.4, Math.max(0, provenance.count - 2) * 0.1),
+            eligibility.strength,
+            0.5 + Math.min(0.4, Math.max(0, eligibility.evidenceCount - 2) * 0.1),
           ),
-          strength,
+          strength: eligibility.strength,
           usageCount: 0,
           successCount: 0,
           failureCount: 0,
           sourceProceduralMemoryIds: [procedure.id],
-          sourceCandidateIds: provenance.sourceCandidateIds,
-          sourceObservationIds: provenance.sourceObservationIds,
-          sourceSessionIds: provenance.sourceSessionIds,
+          sourceCandidateIds: eligibility.sourceCandidateIds,
+          sourceObservationIds: eligibility.sourceObservationIds,
+          sourceSessionIds: eligibility.sourceSessionIds,
           createdAt: now,
           updatedAt: now,
           status: "active",
@@ -170,7 +111,7 @@ export function registerSkillPromotionFunction(sdk: ISdk, kv: StateKV): void {
           return { success: false, promoted: false, reason: "failed to write agent skill" };
         }
         await safeAudit(kv, "skill_promote", "mem::skill-promote", [procedure.id, skill.id], {
-          evidenceCount: provenance.count,
+          evidenceCount: eligibility.evidenceCount,
           sourceProceduralMemoryId: procedure.id,
         });
         return { success: true, promoted: true, skill };

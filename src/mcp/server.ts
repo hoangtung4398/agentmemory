@@ -740,6 +740,54 @@ export function registerMcpEndpoints(
             }
           }
 
+          case "memory_skill_promotion_eligibility": {
+            const proceduralMemoryId = asNonEmptyString(args.proceduralMemoryId);
+            if (!proceduralMemoryId) {
+              return {
+                status_code: 400,
+                body: { error: "proceduralMemoryId is required" },
+              };
+            }
+            const skillConfig = loadSkillConfig();
+            if (!skillConfig.diagnosticsEnabled) {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                      success: false,
+                      error: "Agent skill diagnostics not enabled",
+                      flag: "AGENTMEMORY_SKILL_DIAGNOSTICS",
+                      enableHow: "Set AGENTMEMORY_SKILLS=true and restart.",
+                    }, null, 2),
+                  }],
+                  isError: true,
+                },
+              };
+            }
+            try {
+              const result = await sdk.trigger({
+                function_id: "mem::skill-promotion-eligibility",
+                payload: { proceduralMemoryId },
+              });
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Skill promotion eligibility query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
           case "memory_governance_delete": {
             if (typeof args.memoryIds !== "string") {
               return {
