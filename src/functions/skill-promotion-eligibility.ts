@@ -5,6 +5,7 @@ import type { StateKV } from "../state/kv.js";
 import type { AgentSkill, ProceduralMemory } from "../types.js";
 import {
   evaluateSkillPromotionEligibility,
+  matchesActiveSkillForProceduralMemory,
   nonEmptyString,
   type SkillPromotionEligibility,
 } from "./skill-promotion-policy.js";
@@ -12,6 +13,10 @@ import {
 export interface SkillPromotionEligibilityResult extends Pick<
   SkillPromotionEligibility,
   | "eligible"
+  | "policyEligible"
+  | "currentlyPromotable"
+  | "alreadyPromoted"
+  | "promotionEnabled"
   | "reasonCodes"
   | "reasons"
   | "evidenceCount"
@@ -40,6 +45,10 @@ function toResult(
     found: true,
     proceduralMemoryId,
     eligible: eligibility.eligible,
+    policyEligible: eligibility.policyEligible,
+    currentlyPromotable: eligibility.currentlyPromotable,
+    alreadyPromoted: eligibility.alreadyPromoted,
+    promotionEnabled: eligibility.promotionEnabled,
     reasonCodes: eligibility.reasonCodes,
     reasons: eligibility.reasons,
     evidenceCount: eligibility.evidenceCount,
@@ -55,17 +64,16 @@ function toResult(
   };
 }
 
-function matchesExistingSkill(skill: AgentSkill, proceduralMemoryId: string): boolean {
-  return skill.status === "active" &&
-    skill.sourceProceduralMemoryIds.includes(proceduralMemoryId);
-}
-
 function missingProcedureResult(proceduralMemoryId: string): SkillPromotionEligibilityResult {
   return {
     success: false,
     found: false,
     proceduralMemoryId,
     eligible: false,
+    policyEligible: false,
+    currentlyPromotable: false,
+    alreadyPromoted: false,
+    promotionEnabled: loadSkillConfig().promotionEnabled,
     reasonCodes: [],
     reasons: ["procedural memory not found"],
     evidenceCount: 0,
@@ -77,10 +85,6 @@ function missingProcedureResult(proceduralMemoryId: string): SkillPromotionEligi
     stepCount: 0,
     hasExpectedOutcome: false,
     secretHeavy: false,
-    steps: [],
-    sourceSessionIds: [],
-    sourceObservationIds: [],
-    sourceCandidateIds: [],
   };
 }
 
@@ -114,7 +118,7 @@ export function registerSkillPromotionEligibilityFunction(sdk: ISdk, kv: StateKV
       if (eligibility.eligible) {
         try {
           existingSkillId = (await kv.list<AgentSkill>(KV.skills)).find((skill) =>
-            matchesExistingSkill(skill, procedure.id),
+            matchesActiveSkillForProceduralMemory(skill, procedure.id),
           )?.id;
         } catch {
           return {

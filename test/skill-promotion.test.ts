@@ -174,6 +174,26 @@ describe("mem::skill-promote", () => {
     expect(await kv.list<AgentSkill>(KV.skills)).toEqual([]);
   });
 
+  it("rejects incomplete secret-bearing procedures without writing or mutating the source", async () => {
+    enablePromotion();
+    const source = await seedProcedure(procedure({
+      id: "secret_missing_outcome",
+      name: "token=abcdefghijklmnopqrstuvwxyz",
+      expectedOutcome: undefined,
+    }));
+    const before = JSON.parse(JSON.stringify(source));
+
+    await expect(promote(source.id)).resolves.toEqual({
+      success: true,
+      promoted: false,
+      reason: "procedural memory is missing required skill details",
+    });
+
+    expect(await kv.list<AgentSkill>(KV.skills)).toEqual([]);
+    expect(await kv.get(KV.procedural, source.id)).toEqual(before);
+    expect(kv.setCalls.filter((call) => call.scope === KV.skills)).toEqual([]);
+  });
+
   it("creates one AgentSkill without mutating the source procedure", async () => {
     enablePromotion();
     const source = await seedProcedure();

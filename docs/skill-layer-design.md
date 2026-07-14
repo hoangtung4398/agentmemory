@@ -154,8 +154,56 @@ type AgentSkill = {
 | Provenance | Source id arrays | Makes each promoted instruction traceable to its evidence. |
 | Lifecycle | Timestamps, `status`, `supersedes`, `version` | Supports reinforcement, retirement, and replacement without rewriting history. |
 
-PR12 declares the dedicated `mem:skills` scope. It does not create rows in the
-scope; future promotion remains explicitly opt-in.
+PR13a adds explicit, opt-in direct promotion. `mem::skill-promote` remains the
+only production writer for `mem:skills`; automatic promotion remains absent.
+
+## Eligibility Inventory Diagnostics
+
+PR13c adds read-only inventory diagnostics over a deterministic
+`ProceduralMemory` population. They report policy eligibility independently
+from the runtime promotion flag, current promotability, active source-lineage
+skills, and policy reason counts. The inventory never returns workflow content
+or secret-heavy names, never creates `AgentSkill` rows, and describes only the
+population selected by `scanLimit`.
+
+`policyEligible` is structural: it ignores `promotion_disabled` and an
+existing active skill. `currentlyPromotable` requires policy eligibility,
+promotion enabled, a resolved source-lineage state, and no matching skill.
+`alreadyPromoted` reports an active `AgentSkill` that lists the source
+`ProceduralMemory`, including sources that no longer pass the present promotion
+policy. Each item reports `promotionStateResolved` and
+`currentlyPromotableResolved`: a positive active match is always resolved;
+an unmatched source is resolved only after the required skill population was
+fully inspected. `blockedCount` is exactly the count of scanned rows whose
+`policyEligible` is false, so `policyEligibleCount + blockedCount` equals
+`scannedCount`.
+
+The current `StateKV` wrapper exposes `list(scope)` without cursor or limit
+arguments. Inventory therefore performs one read of `mem:procedural`, sorts it
+by `createdAt` descending and `id` ascending, then evaluates at most
+`scanLimit` rows. For source-lineage resolution it performs at most one read of
+`mem:skills` whenever at least one procedure was scanned, deterministically
+inspects at most 5,000 skill rows as an application-level evaluation limit,
+and stops early once every scanned source has an active match. It performs zero
+skill reads for an empty scan and never performs per-procedure skill lookups or
+KV writes. The physical engine read itself is not cursor-bounded; pagination or
+indexing for this scope is deferred to a separately reviewed infrastructure PR.
+
+The inventory returns `scanTruncated`, `resultTruncated`,
+`skillScanTruncated`, and their OR as `truncated`. `promotionStateComplete`
+is true only when `unresolvedPromotionStateCount` is zero. When an item has
+`promotionStateResolved: false`, `alreadyPromoted: false` is unknown rather
+than definitive. Likewise, a policy-valid, promotion-enabled item with
+`currentlyPromotableResolved: false` is unknown rather than conclusively not
+promotable. Boolean false filters exclude those unknown rows; callers may use
+`promotionStateResolved=false` to inspect them explicitly.
+
+`policyEligibleCount` and `blockedCount` are exact for the scanned procedural
+population. `alreadyPromotedCount` and `currentlyPromotableCount` are exact
+only when `promotionStateComplete` is true; otherwise they are lower bounds of
+confirmed positives. `reasonCounts` is non-exclusive: structural blockers and
+runtime/source-lineage states can both occur for one row, so its total can
+exceed `scannedCount`.
 
 ## Skill Lifecycle
 

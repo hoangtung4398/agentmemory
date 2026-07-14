@@ -29,6 +29,12 @@ import {
   nonEmptySkillFilterValue,
   parseSkillDiagnosticsLimit,
 } from "../functions/skill-diagnostics.js";
+import {
+  isSkillPromotionInventoryBoolean,
+  isSkillPromotionInventoryLimit,
+  parseSkillPromotionInventoryBoolean,
+} from "../functions/skill-promotion-inventory.js";
+import { isSkillPromotionReasonCode } from "../functions/skill-promotion-policy.js";
 
 type McpResponse = {
   status_code: number;
@@ -782,6 +788,76 @@ export function registerMcpEndpoints(
                 status_code: 200,
                 body: {
                   content: [{ type: "text", text: "Skill promotion eligibility query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_skill_promotion_inventory": {
+            const skillConfig = loadSkillConfig();
+            if (!skillConfig.diagnosticsEnabled) {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                      success: false,
+                      error: "Agent skill diagnostics not enabled",
+                      flag: "AGENTMEMORY_SKILL_DIAGNOSTICS",
+                      enableHow: "Set AGENTMEMORY_SKILLS=true and restart.",
+                    }, null, 2),
+                  }],
+                  isError: true,
+                },
+              };
+            }
+            for (const name of [
+              "policyEligible",
+              "currentlyPromotable",
+              "alreadyPromoted",
+              "promotionStateResolved",
+            ] as const) {
+              if (!isSkillPromotionInventoryBoolean(args[name])) {
+                return { status_code: 400, body: { error: `${name} must be true or false` } };
+              }
+            }
+            for (const name of ["scanLimit", "limit"] as const) {
+              if (!isSkillPromotionInventoryLimit(args[name])) {
+                return { status_code: 400, body: { error: `${name} must be a number` } };
+              }
+            }
+            const reasonCode = asNonEmptyString(args.reasonCode);
+            if (reasonCode && !isSkillPromotionReasonCode(reasonCode)) {
+              return { status_code: 400, body: { error: "reasonCode is invalid" } };
+            }
+            try {
+              const result = await sdk.trigger({
+                function_id: "mem::skill-promotion-inventory",
+                payload: {
+                  policyEligible: parseSkillPromotionInventoryBoolean(args.policyEligible),
+                  currentlyPromotable: parseSkillPromotionInventoryBoolean(args.currentlyPromotable),
+                  alreadyPromoted: parseSkillPromotionInventoryBoolean(args.alreadyPromoted),
+                  promotionStateResolved: parseSkillPromotionInventoryBoolean(
+                    args.promotionStateResolved,
+                  ),
+                  reasonCode,
+                  scanLimit: args.scanLimit,
+                  limit: args.limit,
+                },
+              });
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Skill promotion inventory query failed" }],
                   isError: true,
                 },
               };
