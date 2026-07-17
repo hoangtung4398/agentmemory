@@ -374,6 +374,9 @@ export interface SkillConfig {
   enabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
+  recallEnabled: boolean;
+  recallLimit: number;
+  recallMinConfidence: number;
   promotionEnabled: boolean;
   promotionMinStrength: number;
   promotionMinEvidence: number;

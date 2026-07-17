@@ -35,6 +35,7 @@ import {
   parseSkillPromotionInventoryBoolean,
 } from "../functions/skill-promotion-inventory.js";
 import { isSkillPromotionReasonCode } from "../functions/skill-promotion-policy.js";
+import { normalizeSkillRecallInput } from "../functions/skill-recall.js";
 
 type McpResponse = {
   status_code: number;
@@ -740,6 +741,51 @@ export function registerMcpEndpoints(
                 status_code: 200,
                 body: {
                   content: [{ type: "text", text: "Agent skill diagnostics query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_skill_recall": {
+            const skillConfig = loadSkillConfig();
+            if (!skillConfig.recallEnabled) {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                      success: false,
+                      error: "Agent skill recall not enabled",
+                      flag: "AGENTMEMORY_SKILL_RECALL",
+                      enableHow: "Set AGENTMEMORY_SKILLS=true and AGENTMEMORY_SKILL_RECALL=true, then restart.",
+                    }, null, 2),
+                  }],
+                  isError: true,
+                },
+              };
+            }
+            const normalized = normalizeSkillRecallInput(args);
+            if (!normalized.success) {
+              return { status_code: 400, body: { error: normalized.error } };
+            }
+            try {
+              const result = await sdk.trigger({
+                function_id: "mem::skill-recall",
+                payload: normalized.input,
+              });
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Agent skill advisory recall failed" }],
                   isError: true,
                 },
               };

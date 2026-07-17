@@ -85,6 +85,7 @@ import { registerSkillExtractFunctions } from "./functions/skill-extract.js";
 import { registerSkillPromotionFunction } from "./functions/skill-promotion.js";
 import { registerSkillPromotionEligibilityFunction } from "./functions/skill-promotion-eligibility.js";
 import { registerSkillPromotionInventoryFunction } from "./functions/skill-promotion-inventory.js";
+import { registerSkillRecallFunction } from "./functions/skill-recall.js";
 import { registerSlidingWindowFunction } from "./functions/sliding-window.js";
 import { registerQueryExpansionFunction } from "./functions/query-expansion.js";
 import { registerTemporalGraphFunctions } from "./functions/temporal-graph.js";
@@ -332,6 +333,7 @@ async function main() {
   registerSkillPromotionFunction(sdk, kv);
   registerSkillPromotionEligibilityFunction(sdk, kv);
   registerSkillPromotionInventoryFunction(sdk, kv);
+  registerSkillRecallFunction(sdk, kv);
   registerCascadeFunction(sdk, kv);
 
   registerSlidingWindowFunction(sdk, kv, provider);
@@ -526,7 +528,7 @@ async function main() {
     `Ready. ${embeddingProvider ? "Triple-stream (BM25+Vector+Graph)" : "BM25+Graph"} search active.`,
   );
   bootLog(
-    `REST API: 133 endpoints at http://localhost:${config.restPort}/agentmemory/*`,
+    `REST API: 134 endpoints at http://localhost:${config.restPort}/agentmemory/*`,
   );
   bootLog(
     `MCP surface (opt-in via \`npx @agentmemory/mcp\`): ${getAllTools().length} tools · 6 resources · 3 prompts`,

@@ -343,6 +343,10 @@ export function getDecisionCandidateMinEvidence(): number {
 export function loadSkillConfig(): SkillConfig {
   const env = getMergedEnv();
   const enabled = parseBooleanEnv(env["AGENTMEMORY_SKILLS"], false);
+  const recallEnabled = enabled && parseBooleanEnv(
+    env["AGENTMEMORY_SKILL_RECALL"],
+    false,
+  );
   const promotionEnabled = enabled && parseBooleanEnv(
     env["AGENTMEMORY_SKILL_PROMOTION"],
     false,
@@ -359,6 +363,19 @@ export function loadSkillConfig(): SkillConfig {
       50,
       1,
       500,
+    ),
+    recallEnabled,
+    recallLimit: parseClampedInt(
+      env["AGENTMEMORY_SKILL_RECALL_LIMIT"],
+      3,
+      1,
+      10,
+    ),
+    recallMinConfidence: parseClampedNumber(
+      env["AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE"],
+      0.7,
+      0,
+      1,
     ),
     promotionEnabled,
     promotionMinStrength: parseClampedNumber(
