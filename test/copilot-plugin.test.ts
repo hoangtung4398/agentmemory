@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 
@@ -295,7 +295,7 @@ describe("Copilot hook scripts", () => {
     expect(result.requests[0]?.path).toBe("/agentmemory/session/start");
     expect(result.requests[0]?.body).toMatchObject({
       sessionId: "copilot-session",
-      project: "C:\\repo",
+      project: basename("C:\\repo"),
       cwd: "C:\\repo",
     });
   });
