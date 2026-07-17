@@ -98,6 +98,13 @@ function skill(overrides: Partial<AgentSkill> = {}): AgentSkill {
   };
 }
 
+function unscopedSkill(overrides: Partial<AgentSkill> = {}): AgentSkill {
+  const value = skill(overrides);
+  delete value.project;
+  delete value.agentId;
+  return value;
+}
+
 function request(body?: unknown) {
   return { body, headers: {}, query_params: {} };
 }
@@ -189,7 +196,7 @@ describe("AgentSkill advisory recall", () => {
     enableRecall();
     for (const entry of [
       skill(),
-      skill({ id: "global", project: undefined, agentId: undefined, confidence: 0.7 }),
+      unscopedSkill({ id: "global", confidence: 0.7 }),
       skill({ id: "other-project", project: "/repo/b" }),
       skill({ id: "other-agent", agentId: "agent_b" }),
       skill({ id: "retired", status: "retired" }),
@@ -209,20 +216,16 @@ describe("AgentSkill advisory recall", () => {
   it("matches concepts, files, and query tokens deterministically while requiring a contextual signal", async () => {
     enableRecall();
     await kv.set(KV.skills, "skill_release", skill());
-    await kv.set(KV.skills, "skill_tie_b", skill({
+    await kv.set(KV.skills, "skill_tie_b", unscopedSkill({
       id: "skill_tie_b",
-      project: undefined,
-      agentId: undefined,
       concepts: ["release"],
       files: [],
       confidence: 0.8,
       strength: 0.7,
       updatedAt: "2026-07-15T01:00:00.000Z",
     }));
-    await kv.set(KV.skills, "skill_tie_a", skill({
+    await kv.set(KV.skills, "skill_tie_a", unscopedSkill({
       id: "skill_tie_a",
-      project: undefined,
-      agentId: undefined,
       concepts: ["release"],
       files: [],
       confidence: 0.8,
@@ -250,7 +253,7 @@ describe("AgentSkill advisory recall", () => {
     enableRecall();
     process.env["AGENTMEMORY_SKILL_RECALL_LIMIT"] = "1";
     for (const id of ["a", "b", "c"]) {
-      await kv.set(KV.skills, id, skill({ id, project: undefined, agentId: undefined }));
+      await kv.set(KV.skills, id, unscopedSkill({ id }));
     }
     kv.resetTracking();
 
@@ -285,6 +288,78 @@ describe("AgentSkill advisory recall", () => {
     expect(result.advisories[0]).toMatchObject({ skillId: "safe-incomplete" });
     expect(kv.snapshot()).toEqual(before);
     expect(kv.writes).toEqual([]);
+    expect(sdk.triggers).not.toContain("mem::skill-promote");
+  });
+
+  it("skips malformed persisted rows without broadening scope or mutating state", async () => {
+    enableRecall();
+    const malformedRows: unknown[] = [
+      null,
+      [],
+      "legacy skill",
+      { ...skill({ id: "missing-steps" }), steps: undefined },
+      { ...skill({ id: "steps-not-array" }), steps: "Run tests" },
+      { ...skill({ id: "bad-anti-pattern" }), antiPatterns: ["ok", 1] },
+      { ...skill({ id: "missing-provenance" }), sourceProceduralMemoryIds: undefined },
+      { ...skill({ id: "bad-confidence" }), confidence: Number.NaN },
+      { ...skill({ id: "bad-strength" }), strength: Number.POSITIVE_INFINITY },
+      { ...skill({ id: "bad-status" }), status: "archived" },
+      { ...skill({ id: "bad-timestamp" }), updatedAt: "not-a-timestamp" },
+      { ...skill({ id: "empty-project" }), project: "" },
+      { ...skill({ id: "number-project" }), project: 123 },
+      { ...skill({ id: "empty-agent" }), agentId: "" },
+      { ...skill({ id: "object-agent" }), agentId: {} },
+      unscopedSkill({ id: "valid-global" }),
+      skill({ id: "valid-scoped" }),
+      skill({ id: "mismatched-scoped", project: "/repo/b" }),
+    ];
+    for (const [index, row] of malformedRows.entries()) {
+      await kv.set(KV.skills, `row_${index}`, row);
+    }
+    const before = kv.snapshot();
+    kv.resetTracking();
+
+    const result = await recall({ project: "/repo/a", agentId: "agent_a" });
+
+    expect(result).toMatchObject({ scannedCount: malformedRows.length, privacySuppressedCount: 0 });
+    expect(result.advisories.map((entry: { skillId: string }) => entry.skillId)).toEqual([
+      "valid-scoped", "valid-global",
+    ]);
+    expect(kv.snapshot()).toEqual(before);
+    expect(kv.writes).toEqual([]);
+    expect(sdk.triggers).not.toContain("mem::audit");
+    expect(sdk.triggers).not.toContain("mem::skill-promote");
+  });
+
+  it("suppresses incomplete and cross-field secrets consistently across every surface", async () => {
+    enableRecall();
+    registerApiTriggers(sdk as never, kv as never);
+    registerMcpEndpoints(sdk as never, kv as never);
+    const rows: unknown[] = [
+      { ...skill({ id: "secret-missing-steps", name: "token=abcdefghijklmnopqrstuvwxyz1234567890" }), steps: undefined },
+      { ...skill({ id: "secret-malformed-anti", triggerCondition: "<private>internal" }), antiPatterns: ["ok", 1] },
+      { ...skill({ id: "secret-missing-provenance", expectedOutcome: "Bearer abcdefghijklmnopqrstuvwxyz123456" }), sourceProceduralMemoryIds: undefined },
+      skill({ id: "secret-cross-field", triggerCondition: "Bearer", steps: ["abcdefghijklmnopqrstuvwxyz1234567890"] }),
+    ];
+    for (const [index, row] of rows.entries()) await kv.set(KV.skills, `secret_${index}`, row);
+    const before = kv.snapshot();
+    kv.resetTracking();
+    const input = { project: "/repo/a", agentId: "agent_a" };
+
+    const direct = await recall(input);
+    const rest = await sdk.getFunction("api::skill-recall")!(request(input));
+    const mcp = await sdk.getFunction("mcp::tools::call")!(request({
+      name: "memory_skill_recall",
+      arguments: input,
+    }));
+    const mcpResult = JSON.parse(mcp.body.content[0].text);
+
+    expect(direct).toMatchObject({ privacySuppressedCount: 4, returnedCount: 0, advisories: [] });
+    expect(rest.body).toEqual(direct);
+    expect(mcpResult).toEqual(direct);
+    expect(kv.snapshot()).toEqual(before);
+    expect(kv.writes).toEqual([]);
+    expect(sdk.triggers).not.toContain("mem::audit");
     expect(sdk.triggers).not.toContain("mem::skill-promote");
   });
 

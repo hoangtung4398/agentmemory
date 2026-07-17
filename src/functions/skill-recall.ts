@@ -2,7 +2,6 @@ import type { ISdk } from "iii-sdk";
 import { loadSkillConfig } from "../config.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
-import type { AgentSkill } from "../types.js";
 import { stripPrivateData } from "./privacy.js";
 
 export const SKILL_RECALL_MAX_QUERY_LENGTH = 1_000;
@@ -120,27 +119,131 @@ function includesExact(values: string[], requested: string[]): number {
   return requested.filter((value) => valuesSet.has(value)).length;
 }
 
-function hasPrivateData(skill: AgentSkill): boolean {
-  const text = [
-    skill.name,
-    skill.triggerCondition,
-    skill.expectedOutcome,
-    ...skill.steps,
-    ...skill.antiPatterns,
-  ];
-  return text.some((value) =>
-    typeof value !== "string" ||
-    stripPrivateData(value) !== value ||
-    /<private\b/i.test(value)
-  );
+type RecallableSkill = {
+  id: string;
+  name: string;
+  triggerCondition: string;
+  steps: string[];
+  expectedOutcome: string;
+  antiPatterns: string[];
+  project?: string;
+  agentId?: string;
+  files: string[];
+  concepts: string[];
+  confidence: number;
+  strength: number;
+  sourceProceduralMemoryIds: string[];
+  status: "active" | "retired" | "superseded";
+  updatedAt: string;
+};
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
-function scopeMatches(skill: AgentSkill, input: SkillRecallInput): boolean {
+function visibleInstructionPayload(row: unknown): string {
+  const record = recordValue(row);
+  if (!record) return "";
+  const text: string[] = [];
+  for (const field of ["name", "triggerCondition"] as const) {
+    if (typeof record[field] === "string") text.push(record[field]);
+  }
+  if (Array.isArray(record.steps)) {
+    text.push(...record.steps.filter((entry): entry is string => typeof entry === "string"));
+  }
+  if (typeof record.expectedOutcome === "string") text.push(record.expectedOutcome);
+  if (Array.isArray(record.antiPatterns)) {
+    text.push(...record.antiPatterns.filter((entry): entry is string => typeof entry === "string"));
+  }
+  return text.join("\n");
+}
+
+function rowContainsPrivateData(row: unknown): boolean {
+  const payload = visibleInstructionPayload(row);
+  return /<private\b/i.test(payload) || stripPrivateData(payload) !== payload;
+}
+
+function requiredString(record: Record<string, unknown>, field: string): string | null {
+  const value = record[field];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function requiredStringArray(
+  record: Record<string, unknown>,
+  field: string,
+  requireValue = false,
+): string[] | null {
+  const value = record[field];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    return null;
+  }
+  const normalized = [...new Set(value.map((entry) => entry.trim()).filter(Boolean))];
+  return requireValue && normalized.length === 0 ? null : normalized;
+}
+
+function optionalScope(record: Record<string, unknown>, field: string): string | undefined | null {
+  if (!Object.hasOwn(record, field)) return undefined;
+  const value = record[field];
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value.trim();
+}
+
+function inspectSkillRow(row: unknown): RecallableSkill | null {
+  const record = recordValue(row);
+  if (!record) return null;
+  const id = requiredString(record, "id");
+  const name = requiredString(record, "name");
+  const triggerCondition = requiredString(record, "triggerCondition");
+  const steps = requiredStringArray(record, "steps", true);
+  const expectedOutcome = requiredString(record, "expectedOutcome");
+  const antiPatterns = requiredStringArray(record, "antiPatterns");
+  const files = requiredStringArray(record, "files");
+  const concepts = requiredStringArray(record, "concepts");
+  const sourceProceduralMemoryIds = requiredStringArray(record, "sourceProceduralMemoryIds");
+  const project = optionalScope(record, "project");
+  const agentId = optionalScope(record, "agentId");
+  const confidence = record.confidence;
+  const strength = record.strength;
+  const status = record.status;
+  const updatedAt = requiredString(record, "updatedAt");
+  const updatedAtMs = updatedAt ? Date.parse(updatedAt) : Number.NaN;
+  if (
+    !id || !name || !triggerCondition || !steps || !expectedOutcome || !antiPatterns ||
+    !files || !concepts || !sourceProceduralMemoryIds || project === null || agentId === null ||
+    typeof confidence !== "number" || !Number.isFinite(confidence) ||
+    typeof strength !== "number" || !Number.isFinite(strength) ||
+    (status !== "active" && status !== "retired" && status !== "superseded") ||
+    !Number.isFinite(updatedAtMs)
+  ) {
+    return null;
+  }
+  return {
+    id,
+    name,
+    triggerCondition,
+    steps,
+    expectedOutcome,
+    antiPatterns,
+    ...(project === undefined ? {} : { project }),
+    ...(agentId === undefined ? {} : { agentId }),
+    files,
+    concepts,
+    confidence,
+    strength,
+    sourceProceduralMemoryIds,
+    status,
+    updatedAt: new Date(updatedAtMs).toISOString(),
+  };
+}
+
+function scopeMatches(skill: RecallableSkill, input: SkillRecallInput): boolean {
   return (!skill.project || skill.project === input.project) &&
     (!skill.agentId || skill.agentId === input.agentId);
 }
 
-function scoreSkill(skill: AgentSkill, input: SkillRecallInput): { score: number; applicable: boolean } {
+function scoreSkill(skill: RecallableSkill, input: SkillRecallInput): { score: number; applicable: boolean } {
   let score = 0;
   let applicable = false;
   if (skill.project && skill.project === input.project) score += 6;
@@ -159,7 +262,7 @@ function scoreSkill(skill: AgentSkill, input: SkillRecallInput): { score: number
   return { score, applicable };
 }
 
-function toAdvisory(skill: AgentSkill, score: number): SkillAdvisory {
+function toAdvisory(skill: RecallableSkill, score: number): SkillAdvisory {
   return {
     source: "skill-advisory",
     skillId: skill.id,
@@ -192,18 +295,22 @@ export function registerSkillRecallFunction(sdk: ISdk, kv: StateKV): void {
       const input = normalized.input;
       const limit = input.limit ?? config.recallLimit;
       const contextual = Boolean(input.query || input.files?.length || input.concepts?.length);
-      const skills = await kv.list<AgentSkill>(KV.skills);
+      const rows = await kv.list<unknown>(KV.skills);
       let privacySuppressedCount = 0;
+      const skills = rows.flatMap((row) => {
+        if (rowContainsPrivateData(row)) {
+          privacySuppressedCount += 1;
+          return [];
+        }
+        const skill = inspectSkillRow(row);
+        return skill ? [skill] : [];
+      });
       const matched = skills
         .filter((skill) => skill.status === "active" && skill.confidence >= config.recallMinConfidence)
         .filter((skill) => scopeMatches(skill, input))
         .flatMap((skill) => {
           const { score, applicable } = scoreSkill(skill, input);
           if (contextual && !applicable) return [];
-          if (hasPrivateData(skill)) {
-            privacySuppressedCount += 1;
-            return [];
-          }
           return [{ skill, score }];
         })
         .sort((a, b) =>
@@ -217,7 +324,7 @@ export function registerSkillRecallFunction(sdk: ISdk, kv: StateKV): void {
       return {
         success: true,
         enabled: true,
-        scannedCount: skills.length,
+        scannedCount: rows.length,
         matchedCount: matched.length,
         returnedCount: advisories.length,
         truncated: matched.length > advisories.length,
