@@ -819,6 +819,7 @@ export interface AuditEntry {
     | "action_update"
     | "lease_acquire"
     | "lease_release"
+    | "lease_renew"
     | "routine_run"
     | "signal_send"
     | "checkpoint_resolve"
