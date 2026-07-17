@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAllTools, ESSENTIAL_TOOLS } from "../../src/mcp/tools-registry.js";
 import { ADAPTERS } from "../../src/cli/connect/index.js";
+import { hasAutogenDrift } from "./line-endings.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -35,7 +36,7 @@ function applyBlock(file: string, key: string, body: string): void {
     next = `${full}\n`;
   }
   if (check) {
-    if (existing !== next) {
+    if (hasAutogenDrift(existing, next)) {
       console.error(`DRIFT: ${file.replace(ROOT + "/", "")} (AUTOGEN:${key} out of date — run \`npm run skills:gen\`)`);
       process.exitCode = 1;
     }

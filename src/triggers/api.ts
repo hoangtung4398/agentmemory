@@ -277,7 +277,7 @@ export function registerApiTriggers(
   });
 
   sdk.registerFunction("api::health", 
-    async (req: ApiRequest): Promise<Response> => {
+    async (): Promise<Response> => {
       const health = await getLatestHealth(kv);
       const functionMetrics = metricsStore ? await metricsStore.getAll() : [];
       const circuitBreaker =
@@ -313,7 +313,7 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::observe",
     async (req: ApiRequest<HookPayload>): Promise<Response> => {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+      const body = (req.body ?? {}) as unknown as Record<string, unknown>;
       const hookType = asNonEmptyString(body.hookType);
       const sessionId = asNonEmptyString(body.sessionId);
       const project = asNonEmptyString(body.project);
@@ -2602,13 +2602,14 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      if (!req.body?.name || !req.body?.steps) {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (!body.name || !body.steps) {
         return {
           status_code: 400,
           body: { error: "name and steps are required" },
         };
       }
-      const result = await sdk.trigger({ function_id: "mem::routine-create", payload: req.body });
+      const result = await sdk.trigger({ function_id: "mem::routine-create", payload: body });
       return { status_code: 201, body: result };
     },
   );

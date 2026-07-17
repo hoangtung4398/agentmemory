@@ -11,9 +11,9 @@ async function loadPipeline(): Promise<any> {
 
   pipelineLoading = (async () => {
     try {
-      const { pipeline: createPipeline } = await import(
+      const { pipeline: createPipeline } = (await import(
         "@xenova/transformers"
-      );
+      )) as { pipeline: (...args: unknown[]) => Promise<unknown> };
       pipeline = await createPipeline(
         "text-classification",
         "Xenova/ms-marco-MiniLM-L-6-v2",

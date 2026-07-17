@@ -129,7 +129,9 @@ export function registerEventTriggers(sdk: ISdk, kv: StateKV): void {
             sessionId: payload.key,
             observationCount: newCount,
             delta: newCount - oldCount,
-            updatedAt: payload.new_value?.updatedAt ?? new Date().toISOString(),
+            updatedAt:
+              (payload.new_value as { updatedAt?: string } | undefined)?.updatedAt ??
+              new Date().toISOString(),
           },
         },
         action: TriggerAction.Void(),
