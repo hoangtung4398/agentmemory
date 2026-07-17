@@ -303,6 +303,12 @@ describe("AgentSkill advisory recall", () => {
       { ...skill({ id: "missing-provenance" }), sourceProceduralMemoryIds: undefined },
       { ...skill({ id: "bad-confidence" }), confidence: Number.NaN },
       { ...skill({ id: "bad-strength" }), strength: Number.POSITIVE_INFINITY },
+      { ...skill({ id: "negative-confidence" }), confidence: -0.01 },
+      { ...skill({ id: "high-confidence" }), confidence: 1.01 },
+      { ...skill({ id: "negative-strength" }), strength: -0.01 },
+      { ...skill({ id: "high-strength" }), strength: 1.01 },
+      { ...skill({ id: "string-confidence" }), confidence: "0.9" },
+      { ...skill({ id: "string-strength" }), strength: "0.8" },
       { ...skill({ id: "bad-status" }), status: "archived" },
       { ...skill({ id: "bad-timestamp" }), updatedAt: "not-a-timestamp" },
       { ...skill({ id: "empty-project" }), project: "" },
@@ -355,6 +361,52 @@ describe("AgentSkill advisory recall", () => {
     const mcpResult = JSON.parse(mcp.body.content[0].text);
 
     expect(direct).toMatchObject({ privacySuppressedCount: 4, returnedCount: 0, advisories: [] });
+    expect(rest.body).toEqual(direct);
+    expect(mcpResult).toEqual(direct);
+    expect(kv.snapshot()).toEqual(before);
+    expect(kv.writes).toEqual([]);
+    expect(sdk.triggers).not.toContain("mem::audit");
+    expect(sdk.triggers).not.toContain("mem::skill-promote");
+  });
+
+  it("counts private rows only after caller-visible scope and eligibility gates across every surface", async () => {
+    enableRecall();
+    registerApiTriggers(sdk as never, kv as never);
+    registerMcpEndpoints(sdk as never, kv as never);
+    const privateName = "token=abcdefghijklmnopqrstuvwxyz1234567890";
+    const rows: unknown[] = [
+      skill({ id: "visible" }),
+      skill({ id: "private-same-scope", name: privateName }),
+      skill({ id: "private-other-project", name: privateName, project: "/repo/b" }),
+      skill({ id: "private-other-agent", name: privateName, agentId: "agent_b" }),
+      skill({ id: "private-retired", name: privateName, status: "retired" }),
+      skill({ id: "private-low-confidence", name: privateName, confidence: 0.69 }),
+      { ...skill({ id: "private-empty-project", name: privateName }), project: "" },
+      { ...skill({ id: "private-number-project", name: privateName }), project: 123 },
+      { ...skill({ id: "private-empty-agent", name: privateName }), agentId: "" },
+      { ...skill({ id: "private-object-agent", name: privateName }), agentId: {} },
+      { ...skill({ id: "malformed-score" }), confidence: 1.01 },
+    ];
+    for (const [index, row] of rows.entries()) await kv.set(KV.skills, `mixed_${index}`, row);
+    const before = kv.snapshot();
+    kv.resetTracking();
+    const input = { project: "/repo/a", agentId: "agent_a" };
+
+    const direct = await recall(input);
+    const rest = await sdk.getFunction("api::skill-recall")!(request(input));
+    const mcp = await sdk.getFunction("mcp::tools::call")!(request({
+      name: "memory_skill_recall",
+      arguments: input,
+    }));
+    const mcpResult = JSON.parse(mcp.body.content[0].text);
+
+    expect(direct).toMatchObject({
+      scannedCount: rows.length,
+      privacySuppressedCount: 1,
+      matchedCount: 1,
+      returnedCount: 1,
+      advisories: [{ skillId: "visible" }],
+    });
     expect(rest.body).toEqual(direct);
     expect(mcpResult).toEqual(direct);
     expect(kv.snapshot()).toEqual(before);

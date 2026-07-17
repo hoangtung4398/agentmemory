@@ -190,6 +190,26 @@ function optionalScope(record: Record<string, unknown>, field: string): string |
   return value.trim();
 }
 
+function validScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function privateRowIsVisible(
+  row: unknown,
+  input: SkillRecallInput,
+  recallMinConfidence: number,
+): boolean {
+  const record = recordValue(row);
+  if (!record) return false;
+  const project = optionalScope(record, "project");
+  const agentId = optionalScope(record, "agentId");
+  return project !== null && agentId !== null &&
+    (project === undefined || project === input.project) &&
+    (agentId === undefined || agentId === input.agentId) &&
+    record.status === "active" &&
+    validScore(record.confidence) && record.confidence >= recallMinConfidence;
+}
+
 function inspectSkillRow(row: unknown): RecallableSkill | null {
   const record = recordValue(row);
   if (!record) return null;
@@ -212,8 +232,7 @@ function inspectSkillRow(row: unknown): RecallableSkill | null {
   if (
     !id || !name || !triggerCondition || !steps || !expectedOutcome || !antiPatterns ||
     !files || !concepts || !sourceProceduralMemoryIds || project === null || agentId === null ||
-    typeof confidence !== "number" || !Number.isFinite(confidence) ||
-    typeof strength !== "number" || !Number.isFinite(strength) ||
+    !validScore(confidence) || !validScore(strength) ||
     (status !== "active" && status !== "retired" && status !== "superseded") ||
     !Number.isFinite(updatedAtMs)
   ) {
@@ -299,7 +318,9 @@ export function registerSkillRecallFunction(sdk: ISdk, kv: StateKV): void {
       let privacySuppressedCount = 0;
       const skills = rows.flatMap((row) => {
         if (rowContainsPrivateData(row)) {
-          privacySuppressedCount += 1;
+          if (privateRowIsVisible(row, input, config.recallMinConfidence)) {
+            privacySuppressedCount += 1;
+          }
           return [];
         }
         const skill = inspectSkillRow(row);
