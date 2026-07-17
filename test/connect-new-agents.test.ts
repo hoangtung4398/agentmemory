@@ -3,12 +3,25 @@ import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync } from "node:f
 import { tmpdir, platform } from "node:os";
 import { join } from "node:path";
 
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    homedir: () => process.env["HOME"] || actual.homedir(),
+  };
+});
+
 // Connect adapters for Qwen Code, Antigravity, and Kiro. Each writes
 // the canonical MCP block (npx @agentmemory/mcp + env defaults) into
 // the agent's documented config path.
 
 function freshHome(): string {
   return mkdtempSync(join(tmpdir(), "am-connect-"));
+}
+
+function restoreHome(value: string | undefined): void {
+  if (value !== undefined) process.env["HOME"] = value;
+  else delete process.env["HOME"];
 }
 
 describe("connect: Qwen Code", () => {
@@ -20,7 +33,7 @@ describe("connect: Qwen Code", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -58,7 +71,7 @@ describe("connect: Antigravity", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -91,7 +104,7 @@ describe("connect: Kiro", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -123,7 +136,7 @@ describe("connect: Warp", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -158,7 +171,7 @@ describe("connect: Cline", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -190,7 +203,7 @@ describe("connect: Droid (Factory.ai)", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -224,7 +237,7 @@ describe("connect: Zed", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -257,7 +270,7 @@ describe("connect: Continue.dev", () => {
     process.env["HOME"] = home;
   });
   afterEach(() => {
-    process.env["HOME"] = ORIG;
+    restoreHome(ORIG);
     rmSync(home, { recursive: true, force: true });
   });
 

@@ -3,6 +3,14 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    homedir: () => process.env["HOME"] || actual.homedir(),
+  };
+});
+
 // Regression tests for #678:
 //   - isSlotsEnabled / isReflectEnabled must read from ~/.agentmemory/.env
 //     (not only process.env), so users who set AGENTMEMORY_SLOTS in the
@@ -27,6 +35,7 @@ describe("isSlotsEnabled — reads merged env (#678)", () => {
 
   afterEach(() => {
     if (ORIG_HOME !== undefined) process.env["HOME"] = ORIG_HOME;
+    else delete process.env["HOME"];
     if (ORIG_FLAG !== undefined) process.env["AGENTMEMORY_SLOTS"] = ORIG_FLAG;
     else delete process.env["AGENTMEMORY_SLOTS"];
     rmSync(home, { recursive: true, force: true });
@@ -74,6 +83,7 @@ describe("isReflectEnabled — reads merged env (#678)", () => {
 
   afterEach(() => {
     if (ORIG_HOME !== undefined) process.env["HOME"] = ORIG_HOME;
+    else delete process.env["HOME"];
     if (ORIG_FLAG !== undefined) process.env["AGENTMEMORY_REFLECT"] = ORIG_FLAG;
     else delete process.env["AGENTMEMORY_REFLECT"];
     rmSync(home, { recursive: true, force: true });

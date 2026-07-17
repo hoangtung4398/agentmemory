@@ -8,6 +8,14 @@ import { createPlaintextBearerAuthGuard } from "../integrations/pi/security.ts";
 
 type OpenClawHandler = (event: Record<string, unknown>) => Promise<unknown>;
 
+function findPython(): string | undefined {
+  for (const command of ["python3", "python"]) {
+    const result = spawnSync(command, ["--version"], { encoding: "utf8" });
+    if (result.status === 0) return command;
+  }
+  return undefined;
+}
+
 function mockFetch(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async () =>
     new Response(JSON.stringify({ results: [] }), {
@@ -156,6 +164,8 @@ describe("Hermes plaintext bearer guard", () => {
   });
 
   it("covers loopback, remote HTTP, HTTPS, and require-HTTPS behavior", () => {
+    const python = findPython();
+    expect(python, "Python is required to run the Hermes integration test").toBeDefined();
     const script = String.raw`
 import importlib.util
 import os
@@ -200,7 +210,7 @@ else:
     raise AssertionError("expected RuntimeError")
 assert calls == [], calls
 `;
-    const result = spawnSync("python3", ["-c", script], {
+    const result = spawnSync(python!, ["-c", script], {
       cwd: process.cwd(),
       env: { ...process.env, HOME: home },
       encoding: "utf8",
