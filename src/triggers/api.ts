@@ -139,6 +139,30 @@ function skillDiagnosticsDisabledResponse(): Response {
   });
 }
 
+function skillFeedbackDiagnosticsDisabledResponse(): Response {
+  return flagDisabledResponse({
+    error: "Skill feedback diagnostics not enabled",
+    flag: "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
+    enableHow: "Set AGENTMEMORY_SKILLS=true and AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS=true, then restart.",
+    docsHref: "https://github.com/rohitg00/agentmemory/blob/main/docs/skill-layer-design.md",
+  });
+}
+
+function parseSingleQueryString(value: unknown): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return null;
+  return value.trim();
+}
+
+function parseCanonicalPositiveIntegerQuery(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^[1-9]\d*$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function skillRecallDisabledResponse(): Response {
   return flagDisabledResponse({
     error: "Agent skill recall not enabled",
@@ -1828,6 +1852,61 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::skills",
     config: { api_path: "/agentmemory/skills", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::skill-feedback-diagnostics",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      if (!loadSkillConfig().feedbackDiagnosticsEnabled) {
+        return skillFeedbackDiagnosticsDisabledResponse();
+      }
+
+      const params = req.query_params || {};
+      const skillId = parseSingleQueryString(params["skillId"]);
+      const kind = parseSingleQueryString(params["kind"]);
+      const attribution = parseSingleQueryString(params["attribution"]);
+      const project = parseSingleQueryString(params["project"]);
+      const agentId = parseSingleQueryString(params["agentId"]);
+      const sessionId = parseSingleQueryString(params["sessionId"]);
+      const skillVersion = parseCanonicalPositiveIntegerQuery(params["skillVersion"]);
+      const limit = parseCanonicalPositiveIntegerQuery(params["limit"]);
+
+      if (!skillId || kind === null || attribution === null || project === null || agentId === null || sessionId === null || skillVersion === null || limit === null) {
+        return { status_code: 400, body: { error: "invalid skill feedback diagnostics query" } };
+      }
+
+      try {
+        const result = await sdk.trigger({
+          function_id: "mem::skill-feedback-diagnostics",
+          payload: {
+            skillId,
+            ...(skillVersion === undefined ? {} : { skillVersion }),
+            ...(kind === undefined ? {} : { kind }),
+            ...(attribution === undefined ? {} : { attribution }),
+            ...(project === undefined ? {} : { project }),
+            ...(agentId === undefined ? {} : { agentId }),
+            ...(sessionId === undefined ? {} : { sessionId }),
+            ...(limit === undefined ? {} : { limit }),
+          },
+        }) as { success?: boolean; enabled?: boolean; reason?: string };
+        if (result.success && result.enabled) return { status_code: 200, body: result };
+        if (result.success && !result.enabled) return skillFeedbackDiagnosticsDisabledResponse();
+        if (result.reason === "invalid skill feedback diagnostics input") return { status_code: 400, body: result };
+        return { status_code: 500, body: result };
+      } catch {
+        return { status_code: 500, body: { success: false, error: "Skill feedback diagnostics query failed" } };
+      }
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::skill-feedback-diagnostics",
+    config: {
+      api_path: "/agentmemory/skill-feedback/diagnostics",
+      http_method: "GET",
+      middleware_function_ids: ["middleware::api-auth"],
+    },
   });
 
   sdk.registerFunction("api::skill-recall",
