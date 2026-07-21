@@ -12,6 +12,8 @@ import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { recordAccessBatch } from "./access-tracker.js";
 import { logger } from "../logger.js";
+import { loadSkillConfig } from "../config.js";
+import { packSkillAdvisories, parseSkillAdvisories } from "./skill-context.js";
 import {
   isSlotsEnabled,
   listPinnedSlots,
@@ -211,6 +213,37 @@ export function registerContextFunction(
         usedTokens += block.tokens;
         if (block.sourceIds && block.sourceIds.length > 0) {
           accessedIds.push(...block.sourceIds);
+        }
+      }
+
+      const skillConfig = loadSkillConfig();
+      if (skillConfig.contextEnabled) {
+        const separatorTokens = selected.length > 0 ? estimateTokens("\n\n") : 0;
+        const remainingOverallBudget = budget - usedTokens - separatorTokens;
+        const skillBudget = Math.min(
+          skillConfig.contextTokenBudget,
+          remainingOverallBudget,
+        );
+        if (skillBudget > 0) {
+          const currentSession = allSessions.find((session) => session.id === data.sessionId);
+          try {
+            const skillRecallResult = await sdk.trigger({
+              function_id: "mem::skill-recall",
+              payload: {
+                project: data.project,
+                ...(currentSession?.agentId ? { agentId: currentSession.agentId } : {}),
+                limit: skillConfig.recallLimit,
+              },
+            });
+            const advisories = parseSkillAdvisories(skillRecallResult);
+            const skillSection = advisories && packSkillAdvisories(advisories, skillBudget);
+            if (skillSection && usedTokens + separatorTokens + skillSection.tokens <= budget) {
+              selected.push(skillSection.content);
+              usedTokens += separatorTokens + skillSection.tokens;
+            }
+          } catch {
+            logger.warn("Skill advisory context recall failed", { project: data.project });
+          }
         }
       }
 
