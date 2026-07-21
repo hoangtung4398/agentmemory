@@ -9,6 +9,8 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILL_RECALL",
   "AGENTMEMORY_SKILL_RECALL_LIMIT",
   "AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE",
+  "AGENTMEMORY_SKILL_CONTEXT",
+  "AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -65,6 +67,8 @@ describe("AgentSkill read model configuration", () => {
       recallEnabled: false,
       recallLimit: 3,
       recallMinConfidence: 0.7,
+      contextEnabled: false,
+      contextTokenBudget: 320,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -82,6 +86,8 @@ describe("AgentSkill read model configuration", () => {
       recallEnabled: false,
       recallLimit: 3,
       recallMinConfidence: 0.7,
+      contextEnabled: false,
+      contextTokenBudget: 320,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -112,6 +118,8 @@ describe("AgentSkill read model configuration", () => {
       recallEnabled: false,
       recallLimit: 3,
       recallMinConfidence: 0.7,
+      contextEnabled: false,
+      contextTokenBudget: 320,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -136,6 +144,8 @@ describe("AgentSkill read model configuration", () => {
       recallEnabled: false,
       recallLimit: 3,
       recallMinConfidence: 0.7,
+      contextEnabled: false,
+      contextTokenBudget: 320,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -189,6 +199,37 @@ describe("AgentSkill read model configuration", () => {
       recallEnabled: true,
       recallLimit: 10,
       recallMinConfidence: 0,
+    });
+  });
+
+  it("requires skills and recall to enable advisory context and clamps its budget", async () => {
+    process.env["AGENTMEMORY_SKILL_CONTEXT"] = "true";
+    process.env["AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET"] = "1";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      recallEnabled: false,
+      contextEnabled: false,
+      contextTokenBudget: 64,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: true,
+      recallEnabled: false,
+      contextEnabled: false,
+    });
+
+    process.env["AGENTMEMORY_SKILL_RECALL"] = "true";
+    process.env["AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET"] = "9999";
+    ({ loadSkillConfig } = await freshConfig());
+
+    expect(loadSkillConfig()).toMatchObject({
+      recallEnabled: true,
+      contextEnabled: true,
+      contextTokenBudget: 1000,
     });
   });
 });

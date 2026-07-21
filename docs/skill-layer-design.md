@@ -406,8 +406,10 @@ The following PRs remain future work after PR12:
    provenance and no injection.
 2. **PR14: Skill recall diagnostics.** Explain why a future skill matched,
    was skipped, or was excluded by scope or budget.
-3. **PR15: Skill context injection in advisory mode.** Append bounded,
-   labeled checklist context without changing current retrieval behavior.
+3. **PR15: Skill context injection in advisory mode.** Implemented as a
+   default-off, separately budgeted `mem::context` append-only advisory section.
+   It reuses skill recall, does not change current retrieval behavior, execute
+   commands, or record usage/success.
 4. **PR16: Skill reinforcement metrics.** Add explicit success/failure,
    correction, staleness, retirement, and supersession accounting.
 5. **Later: LLM-assisted skill extraction in shadow mode only.** It may

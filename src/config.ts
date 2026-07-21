@@ -347,6 +347,10 @@ export function loadSkillConfig(): SkillConfig {
     env["AGENTMEMORY_SKILL_RECALL"],
     false,
   );
+  const contextEnabled = recallEnabled && parseBooleanEnv(
+    env["AGENTMEMORY_SKILL_CONTEXT"],
+    false,
+  );
   const promotionEnabled = enabled && parseBooleanEnv(
     env["AGENTMEMORY_SKILL_PROMOTION"],
     false,
@@ -376,6 +380,13 @@ export function loadSkillConfig(): SkillConfig {
       0.7,
       0,
       1,
+    ),
+    contextEnabled,
+    contextTokenBudget: parseClampedInt(
+      env["AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET"],
+      320,
+      64,
+      1000,
     ),
     promotionEnabled,
     promotionMinStrength: parseClampedNumber(

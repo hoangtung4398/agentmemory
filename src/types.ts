@@ -377,6 +377,8 @@ export interface SkillConfig {
   recallEnabled: boolean;
   recallLimit: number;
   recallMinConfidence: number;
+  contextEnabled: boolean;
+  contextTokenBudget: number;
   promotionEnabled: boolean;
   promotionMinStrength: number;
   promotionMinEvidence: number;

@@ -238,6 +238,8 @@ Latest release notes: [CHANGELOG.md](CHANGELOG.md). Decision Engine rollout
 defaults and diagnostics: [docs/decision-engine-milestone.md](docs/decision-engine-milestone.md).
 Future Skill / Self-Improvement Layer design: [docs/skill-layer-design.md](docs/skill-layer-design.md).
 
+AgentSkill recall remains opt-in. Set `AGENTMEMORY_SKILLS=true`, `AGENTMEMORY_SKILL_RECALL=true`, and `AGENTMEMORY_SKILL_CONTEXT=true` to append a separately budgeted, advisory-only checklist section to `mem::context`. It does not execute commands or record usage/success; hook delivery still requires `AGENTMEMORY_INJECT_CONTEXT=true`.
+
 ---
 
 <h2 id="benchmarks"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-benchmarks.svg"><img src="assets/tags/section-benchmarks.svg" alt="Benchmarks" height="32" /></picture></h2>
