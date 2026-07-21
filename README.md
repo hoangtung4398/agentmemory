@@ -238,7 +238,7 @@ Latest release notes: [CHANGELOG.md](CHANGELOG.md). Decision Engine rollout
 defaults and diagnostics: [docs/decision-engine-milestone.md](docs/decision-engine-milestone.md).
 Future Skill / Self-Improvement Layer design: [docs/skill-layer-design.md](docs/skill-layer-design.md).
 
-AgentSkill recall remains opt-in. Set `AGENTMEMORY_SKILLS=true`, `AGENTMEMORY_SKILL_RECALL=true`, and `AGENTMEMORY_SKILL_CONTEXT=true` to append a separately budgeted, advisory-only checklist section to `mem::context`. It does not execute commands or record usage/success; hook delivery still requires `AGENTMEMORY_INJECT_CONTEXT=true`.
+AgentSkill recall remains opt-in. Set `AGENTMEMORY_SKILLS=true`, `AGENTMEMORY_SKILL_RECALL=true`, and `AGENTMEMORY_SKILL_CONTEXT=true` to append a separately budgeted, advisory-only checklist section to `mem::context`. It does not execute commands or record usage/success; hook delivery still requires `AGENTMEMORY_INJECT_CONTEXT=true`. Explicit feedback is separately gated by `AGENTMEMORY_SKILL_FEEDBACK=true` and is available only through the internal writer; it appends evidence without changing a skill's counters, confidence, strength, status, or lifecycle.
 
 ---
 
@@ -1487,7 +1487,7 @@ Create `~/.agentmemory/.env`:
                                    # PostToolUse regardless of this flag.
 # GRAPH_EXTRACTION_ENABLED=false
 # CONSOLIDATION_ENABLED=false   # on by default when an LLM provider is configured
- # AGENTMEMORY_SKILLS=false      # OFF by default. Gates AgentSkill advisory recall, diagnostics, and direct promotion.
+ # AGENTMEMORY_SKILLS=false      # OFF by default. Gates independently configured AgentSkill diagnostics, recall, promotion, and explicit feedback.
  # AGENTMEMORY_SKILL_DIAGNOSTICS=true # Defaults to true only when skills are enabled.
  # AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT=50 # Bounded to 1..500 rows.
  # AGENTMEMORY_SKILL_RECALL=false # OFF by default. Read-only advisory recall; never injects context or promotes skills.
@@ -1496,6 +1496,7 @@ Create `~/.agentmemory/.env`:
  # AGENTMEMORY_SKILL_PROMOTION=false # Enables direct mem::skill-promote only when skills are enabled; no automatic promotion.
 # AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH=0.7 # Bounded to the ProceduralMemory 0..1 strength scale.
 # AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE=2 # Bounded to 1..10 independent provenance ids.
+# AGENTMEMORY_SKILL_FEEDBACK=false # Enables direct internal append-only feedback recording only when skills are enabled; no REST, MCP, hook, counters, or lifecycle updates.
 # LESSON_DECAY_ENABLED=true
 # OBSIDIAN_AUTO_EXPORT=false
 # AGENTMEMORY_EXPORT_ROOT=~/.agentmemory

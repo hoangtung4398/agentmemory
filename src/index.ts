@@ -86,6 +86,7 @@ import { registerSkillPromotionFunction } from "./functions/skill-promotion.js";
 import { registerSkillPromotionEligibilityFunction } from "./functions/skill-promotion-eligibility.js";
 import { registerSkillPromotionInventoryFunction } from "./functions/skill-promotion-inventory.js";
 import { registerSkillRecallFunction } from "./functions/skill-recall.js";
+import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSlidingWindowFunction } from "./functions/sliding-window.js";
 import { registerQueryExpansionFunction } from "./functions/query-expansion.js";
 import { registerTemporalGraphFunctions } from "./functions/temporal-graph.js";
@@ -334,6 +335,7 @@ async function main() {
   registerSkillPromotionEligibilityFunction(sdk, kv);
   registerSkillPromotionInventoryFunction(sdk, kv);
   registerSkillRecallFunction(sdk, kv);
+  registerSkillFeedbackFunction(sdk, kv);
   registerCascadeFunction(sdk, kv);
 
   registerSlidingWindowFunction(sdk, kv, provider);

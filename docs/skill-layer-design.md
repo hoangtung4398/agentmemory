@@ -4,8 +4,10 @@
 
 This is the PR11 design document for an opt-in Skill / Self-Improvement Layer
 for AgentMemory. PR12 now implements only its additive, default-off read model
-and diagnostics scaffold; it does not add skill creation, promotion, injection,
-feedback, or enforcement.
+and diagnostics scaffold. PR13a adds direct promotion. Subsequent milestones
+add promotion eligibility and inventory diagnostics, advisory recall, bounded
+context injection, and the current explicit append-only feedback ledger. None
+of these stages adds enforcement or an automatic skill lifecycle reducer.
 
 The Decision Engine PR1-PR10 and its milestone documentation are already in
 `main`. This document designs how durable procedural evidence could become
@@ -15,8 +17,11 @@ reusable agent guidance without changing existing memory behavior.
 
 - No automatic tool execution, code modification, or skill enforcement.
 - No LLM classifier or working-memory enforcement.
-- No changes to observe, remember, search, smart search, context,
-  consolidation, ranking, vector search, graph search, REST, MCP, or hooks.
+- No changes to observe, remember, search, smart search, consolidation,
+  ranking, vector search, graph search, REST, MCP, or hooks. Existing
+  retrieval and ranking behavior remains unchanged.
+- Context injection is additive, separately gated, and advisory-only. No hook
+  or command automatically records feedback.
 - No existing KV record-shape changes and no company-repository changes.
 
 The first implementation milestone after this design must be advisory only. A
@@ -45,7 +50,7 @@ advisory instruction that can be recalled predictably.
 | `ProceduralMemory` | Consolidated workflow with trigger, steps, outcome, frequency, scope, strength, and source evidence. | Primary evidence source for future promotion; it remains useful even when no skill exists. |
 | `Lesson` | Content-fingerprinted learning artifact with confidence, reinforcement, source ids, decay, and soft deletion. | Can supply corrections or anti-patterns; never silently becomes a skill. |
 | `Insight` | Consolidated interpretation across memories, lessons, and crystals. | May explain usefulness or reveal a conflict; it is not executable guidance. |
-| `AgentSkill` (PR12 scaffold) | Additive, default-off type, scope, and read-only diagnostics. | Promotion and advisory recall remain future work. |
+| `AgentSkill` | Additive, default-off instruction derived by direct promotion and optionally recalled as advisory context. | Explicit feedback is stored separately as append-only evidence; it does not mutate the skill. |
 
 ```mermaid
 flowchart LR
@@ -351,7 +356,7 @@ enforcement.
 | No self-modification | A skill cannot change itself, repository files, configuration, hooks, tools, or memories without explicit user instruction. |
 | Auditability | Future promotion, recall, feedback, retirement, and supersession retain source references and append-style diagnostics. |
 
-## PR12 Read Model Scaffold
+## Implemented Read and Evidence Stages
 
 PR12 adds the additive `AgentSkill` type, `mem:skills` scope constant, and
 read-only diagnostics surfaces. PR13a adds an internal, direct-only
@@ -377,6 +382,24 @@ the only skill write path. Diagnostics are independently disableable with
 and their limit defaults to 50 and is bounded to 1..500 by
 `AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT`.
 
+### Explicit Feedback Ledger
+
+`AGENTMEMORY_SKILL_FEEDBACK` is independently default-off and also requires
+`AGENTMEMORY_SKILLS=true`. When enabled, only a direct internal call to
+`mem::skill-feedback-record` can append an immutable event to
+`mem:skill-feedback`. The event captures a validated skill/version snapshot,
+explicit success, failure, correction, or staleness attribution, caller scope,
+and bounded source identifiers. It has no REST, MCP, hook, context, recall, or
+promotion-pipeline surface.
+
+The ledger does not infer success from display or recall and does not mutate an
+`AgentSkill`: usage/success/failure counters, confidence, strength, timestamps,
+status, supersession, and version remain unchanged. Reinforcement is therefore
+split into four later stages: (1) explicit append-only feedback ledger, (2)
+read-only feedback diagnostics and aggregation, (3) separately gated
+counter/reinforcement reduction, and (4) review-driven retirement and
+supersession.
+
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
 returns the corresponding MCP diagnostic. This is expected default-off behavior,
@@ -397,24 +420,21 @@ queues, indexes, timestamps, counters, or statuses. `ProceduralMemory` has no
 status field in the current KV shape, so source existence is the current source
 lifecycle check; PR13b does not invent or persist a new status.
 
-## Conservative Implementation Roadmap
+## Explicit Feedback Roadmap
 
-The following PRs remain future work after PR12:
+1. **Phase 1 - Explicit append-only feedback ledger: implemented by this
+   milestone.** Direct-only feedback preserves source evidence without
+   mutating an `AgentSkill`.
+2. **Phase 2 - Read-only feedback diagnostics and deterministic aggregation:
+   future.** It may inspect ledger evidence but cannot update skill quality or
+   lifecycle state.
+3. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
+   Any quality change requires a dedicated, reviewed reducer.
+4. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+   changes remain explicit and auditable.
 
-1. **PR13: Promote ProceduralMemory to skill candidate behind explicit
-   configuration.** Add opt-in promotion into a new skill scope with
-   provenance and no injection.
-2. **PR14: Skill recall diagnostics.** Explain why a future skill matched,
-   was skipped, or was excluded by scope or budget.
-3. **PR15: Skill context injection in advisory mode.** Implemented as a
-   default-off, separately budgeted `mem::context` append-only advisory section.
-   It reuses skill recall, does not change current retrieval behavior, execute
-   commands, or record usage/success.
-4. **PR16: Skill reinforcement metrics.** Add explicit success/failure,
-   correction, staleness, retirement, and supersession accounting.
-5. **Later: LLM-assisted skill extraction in shadow mode only.** It may
-   propose candidates but cannot promote, inject, or enforce without
-   separately approved validation and compatibility work.
+Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
+remain out of scope.
 
 Each future PR must preserve the default-off posture, introduce one auditable
 behavior at a time, and avoid unrelated refactors or ranking work.

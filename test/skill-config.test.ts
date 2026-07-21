@@ -11,6 +11,7 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE",
   "AGENTMEMORY_SKILL_CONTEXT",
   "AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET",
+  "AGENTMEMORY_SKILL_FEEDBACK",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -62,6 +63,7 @@ describe("AgentSkill read model configuration", () => {
 
     expect(loadSkillConfig()).toEqual({
       enabled: false,
+      feedbackEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -81,6 +83,7 @@ describe("AgentSkill read model configuration", () => {
 
     expect(loadSkillConfig()).toEqual({
       enabled: true,
+      feedbackEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -113,6 +116,7 @@ describe("AgentSkill read model configuration", () => {
 
     expect(loadSkillConfig()).toEqual({
       enabled: true,
+      feedbackEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
       recallEnabled: false,
@@ -139,6 +143,7 @@ describe("AgentSkill read model configuration", () => {
 
     expect(loadSkillConfig()).toEqual({
       enabled: true,
+      feedbackEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
       recallEnabled: false,
@@ -174,6 +179,26 @@ describe("AgentSkill read model configuration", () => {
       promotionEnabled: true,
       promotionMinStrength: 0,
       promotionMinEvidence: 10,
+    });
+  });
+
+  it("requires skills to enable the explicit feedback ledger", async () => {
+    process.env["AGENTMEMORY_SKILL_FEEDBACK"] = "true";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      feedbackEnabled: false,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: true,
+      feedbackEnabled: true,
+      recallEnabled: false,
+      contextEnabled: false,
+      promotionEnabled: false,
     });
   });
 
