@@ -4,8 +4,10 @@
 
 This is the PR11 design document for an opt-in Skill / Self-Improvement Layer
 for AgentMemory. PR12 now implements only its additive, default-off read model
-and diagnostics scaffold; it does not add skill creation, promotion, injection,
-feedback, or enforcement.
+and diagnostics scaffold. PR13a adds direct promotion, PR13b adds advisory
+context recall, and the current feedback-ledger milestone adds only explicit,
+append-only feedback evidence. None of these stages adds enforcement or an
+automatic skill lifecycle reducer.
 
 The Decision Engine PR1-PR10 and its milestone documentation are already in
 `main`. This document designs how durable procedural evidence could become
@@ -45,7 +47,7 @@ advisory instruction that can be recalled predictably.
 | `ProceduralMemory` | Consolidated workflow with trigger, steps, outcome, frequency, scope, strength, and source evidence. | Primary evidence source for future promotion; it remains useful even when no skill exists. |
 | `Lesson` | Content-fingerprinted learning artifact with confidence, reinforcement, source ids, decay, and soft deletion. | Can supply corrections or anti-patterns; never silently becomes a skill. |
 | `Insight` | Consolidated interpretation across memories, lessons, and crystals. | May explain usefulness or reveal a conflict; it is not executable guidance. |
-| `AgentSkill` (PR12 scaffold) | Additive, default-off type, scope, and read-only diagnostics. | Promotion and advisory recall remain future work. |
+| `AgentSkill` | Additive, default-off instruction derived by direct promotion and optionally recalled as advisory context. | Explicit feedback is stored separately as append-only evidence; it does not mutate the skill. |
 
 ```mermaid
 flowchart LR
@@ -351,7 +353,7 @@ enforcement.
 | No self-modification | A skill cannot change itself, repository files, configuration, hooks, tools, or memories without explicit user instruction. |
 | Auditability | Future promotion, recall, feedback, retirement, and supersession retain source references and append-style diagnostics. |
 
-## PR12 Read Model Scaffold
+## Implemented Read and Evidence Stages
 
 PR12 adds the additive `AgentSkill` type, `mem:skills` scope constant, and
 read-only diagnostics surfaces. PR13a adds an internal, direct-only
@@ -376,6 +378,24 @@ the only skill write path. Diagnostics are independently disableable with
 `AGENTMEMORY_SKILL_DIAGNOSTICS` (default `true` only when skills are enabled),
 and their limit defaults to 50 and is bounded to 1..500 by
 `AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT`.
+
+### Explicit Feedback Ledger
+
+`AGENTMEMORY_SKILL_FEEDBACK` is independently default-off and also requires
+`AGENTMEMORY_SKILLS=true`. When enabled, only a direct internal call to
+`mem::skill-feedback-record` can append an immutable event to
+`mem:skill-feedback`. The event captures a validated skill/version snapshot,
+explicit success, failure, correction, or staleness attribution, caller scope,
+and bounded source identifiers. It has no REST, MCP, hook, context, recall, or
+promotion-pipeline surface.
+
+The ledger does not infer success from display or recall and does not mutate an
+`AgentSkill`: usage/success/failure counters, confidence, strength, timestamps,
+status, supersession, and version remain unchanged. Reinforcement is therefore
+split into four later stages: (1) explicit append-only feedback ledger, (2)
+read-only feedback diagnostics and aggregation, (3) separately gated
+counter/reinforcement reduction, and (4) review-driven retirement and
+supersession.
 
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`

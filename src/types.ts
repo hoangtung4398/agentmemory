@@ -372,6 +372,7 @@ export interface DecisionConfig {
 
 export interface SkillConfig {
   enabled: boolean;
+  feedbackEnabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
   recallEnabled: boolean;
@@ -772,6 +773,31 @@ export interface AgentSkill {
   status: AgentSkillStatus;
   supersedes?: string;
   version: number;
+}
+
+export type SkillFeedbackKind =
+  | "success"
+  | "failure"
+  | "correction"
+  | "stale";
+
+export type SkillFeedbackAttribution =
+  | "user-confirmed"
+  | "agent-observed";
+
+export interface SkillFeedbackEvent {
+  id: string;
+  skillId: string;
+  skillVersion: number;
+  kind: SkillFeedbackKind;
+  attribution: SkillFeedbackAttribution;
+  source: "explicit";
+  project?: string;
+  agentId?: string;
+  sessionId?: string;
+  sourceObservationIds: string[];
+  sourceSessionIds: string[];
+  createdAt: string;
 }
 
 export interface TeamConfig {
