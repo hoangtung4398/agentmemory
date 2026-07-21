@@ -384,6 +384,24 @@ export const V040_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "memory_skill_feedback_diagnostics",
+    description: "Inspect append-only AgentSkill feedback evidence without mutating memory state or changing skill lifecycle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skillId: { type: "string", description: "Exact AgentSkill ID" },
+        skillVersion: { type: "number", description: "Exact positive skill version" },
+        kind: { type: "string", description: "Filter by feedback kind: success, failure, correction, or stale" },
+        attribution: { type: "string", description: "Filter by attribution: user-confirmed or agent-observed" },
+        project: { type: "string", description: "Filter by exact project" },
+        agentId: { type: "string", description: "Filter by exact agent ID" },
+        sessionId: { type: "string", description: "Filter by exact session ID" },
+        limit: { type: "number", description: "Max feedback events (default from AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT, max 500)" },
+      },
+      required: ["skillId"],
+    },
+  },
+  {
     name: "memory_skill_recall",
     description: "Read active AgentSkill advisories without mutating memory state or injecting context.",
     inputSchema: {
@@ -1045,7 +1063,7 @@ export function getAllTools(): McpToolDef[] {
 }
 
 // default switched from "core" (8 essential tools) to "all"
-// (full 59-tool surface). README and plugin manifests have always
+// (full 60-tool surface). README and plugin manifests have always
 // advertised 59 tools "in proxy mode"; the old default left OpenCode /
 // Claude Code users seeing 8 with no indication the other tools existed.
 // Users who want the lean essentials can still set AGENTMEMORY_TOOLS=core.

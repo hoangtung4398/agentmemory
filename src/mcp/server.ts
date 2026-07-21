@@ -36,6 +36,10 @@ import {
 } from "../functions/skill-promotion-inventory.js";
 import { isSkillPromotionReasonCode } from "../functions/skill-promotion-policy.js";
 import { normalizeSkillRecallInput } from "../functions/skill-recall.js";
+import {
+  isSkillFeedbackAttribution,
+  isSkillFeedbackKind,
+} from "../functions/skill-feedback-model.js";
 
 type McpResponse = {
   status_code: number;
@@ -741,6 +745,78 @@ export function registerMcpEndpoints(
                 status_code: 200,
                 body: {
                   content: [{ type: "text", text: "Agent skill diagnostics query failed" }],
+                  isError: true,
+                },
+              };
+            }
+          }
+
+          case "memory_skill_feedback_diagnostics": {
+            const skillConfig = loadSkillConfig();
+            if (!skillConfig.feedbackDiagnosticsEnabled) {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                      success: false,
+                      error: "Skill feedback diagnostics not enabled",
+                      flag: "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
+                      enableHow: "Set AGENTMEMORY_SKILLS=true and AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS=true, then restart.",
+                    }, null, 2),
+                  }],
+                  isError: true,
+                },
+              };
+            }
+
+            const skillId = asNonEmptyString(args.skillId);
+            const filterNames = ["project", "agentId", "sessionId"] as const;
+            const filters: Partial<Record<(typeof filterNames)[number], string>> = {};
+            for (const name of filterNames) {
+              if (args[name] === undefined) continue;
+              const value = asNonEmptyString(args[name]);
+              if (!value) {
+                return { status_code: 400, body: { error: "invalid skill feedback diagnostics input" } };
+              }
+              filters[name] = value;
+            }
+            if (
+              !skillId ||
+              (args.skillVersion !== undefined &&
+                (typeof args.skillVersion !== "number" || !Number.isInteger(args.skillVersion) || args.skillVersion < 1)) ||
+              (args.limit !== undefined &&
+                (typeof args.limit !== "number" || !Number.isFinite(args.limit) || !Number.isInteger(args.limit) || args.limit < 1)) ||
+              (args.kind !== undefined && !isSkillFeedbackKind(args.kind)) ||
+              (args.attribution !== undefined && !isSkillFeedbackAttribution(args.attribution))
+            ) {
+              return { status_code: 400, body: { error: "invalid skill feedback diagnostics input" } };
+            }
+
+            try {
+              const result = await sdk.trigger({
+                function_id: "mem::skill-feedback-diagnostics",
+                payload: {
+                  skillId,
+                  ...(args.skillVersion === undefined ? {} : { skillVersion: args.skillVersion }),
+                  ...(args.kind === undefined ? {} : { kind: args.kind }),
+                  ...(args.attribution === undefined ? {} : { attribution: args.attribution }),
+                  ...filters,
+                  ...(args.limit === undefined ? {} : { limit: args.limit }),
+                },
+              });
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                },
+              };
+            } catch {
+              return {
+                status_code: 200,
+                body: {
+                  content: [{ type: "text", text: "Skill feedback diagnostics query failed" }],
                   isError: true,
                 },
               };
