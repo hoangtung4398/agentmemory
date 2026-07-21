@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { registerSkillFeedbackDiagnosticsFunction } from "../src/functions/skill-feedback-diagnostics.js";
+import { registerMcpEndpoints } from "../src/mcp/server.js";
+import { getAllTools } from "../src/mcp/tools-registry.js";
 import { KV } from "../src/state/schema.js";
 import { registerApiTriggers } from "../src/triggers/api.js";
 import type { SkillFeedbackEvent } from "../src/types.js";
@@ -18,6 +20,7 @@ const TEST_SECRET = "diagnostics-secret";
 
 type HttpResponse = { status_code: number; body: unknown };
 type ApiHandler = (request: { headers?: Record<string, unknown>; query_params?: Record<string, unknown> }) => Promise<HttpResponse>;
+type McpHandler = (request: { body?: unknown }) => Promise<HttpResponse>;
 
 function createSdk(options?: { routeRegisteredFunctions?: boolean }) {
   const functions = new Map<string, Function>();
@@ -107,11 +110,22 @@ function setupAdapter(secret?: string) {
   return { ...routed, kv, handler: routed.functions.get("api::skill-feedback-diagnostics")! as ApiHandler };
 }
 
+function setupMcpAdapter() {
+  const routed = createSdk();
+  const kv = createForbiddenKv();
+  registerMcpEndpoints(routed.sdk as never, kv as never);
+  return { ...routed, kv, handler: routed.functions.get("mcp::tools::call")! as McpHandler };
+}
+
 function request(query_params: Record<string, unknown> = { skillId: "skill_release" }, secret?: string) {
   return {
     headers: secret === undefined ? {} : { authorization: `Bearer ${secret}` },
     query_params,
   };
+}
+
+function mcpRequest(arguments_: Record<string, unknown> = { skillId: "skill_release" }) {
+  return { body: { name: "memory_skill_feedback_diagnostics", arguments: arguments_ } };
 }
 
 function expectNoKvAccess(kv: ReturnType<typeof createForbiddenKv>): void {
@@ -388,6 +402,99 @@ describe("api::skill-feedback-diagnostics", () => {
     expect(JSON.stringify(rows)).toBe(before);
     expect(routed.trigger).toHaveBeenCalledTimes(1);
     expect(routed.trigger).toHaveBeenCalledWith({ function_id: "mem::skill-feedback-diagnostics", payload: { skillId: "skill_release", limit: 2 } });
+    expect(kv.listCalls).toEqual([KV.skillFeedback]);
+    expect(kv.getCalls).toEqual([]);
+    expect(kv.setCalls).toEqual([]);
+    expect(kv.deleteCalls).toEqual([]);
+  });
+
+  it("exposes the additive MCP tool and gates it before validation or delegation", async () => {
+    const { handler, trigger, kv } = setupMcpAdapter();
+    const response = await handler(mcpRequest({ skillId: [] }));
+
+    expect(getAllTools().some((tool) => tool.name === "memory_skill_feedback_diagnostics")).toBe(true);
+    expect(response).toMatchObject({
+      status_code: 200,
+      body: {
+        isError: true,
+        content: [{ type: "text" }],
+      },
+    });
+    expect(JSON.parse((response.body as { content: Array<{ text: string }> }).content[0]!.text)).toMatchObject({
+      success: false,
+      flag: "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
+    });
+    expect(trigger).not.toHaveBeenCalled();
+    expectNoKvAccess(kv);
+  });
+
+  it("validates and forwards MCP diagnostic filters without direct KV access", async () => {
+    enableDiagnostics();
+    const { handler, trigger, kv } = setupMcpAdapter();
+    const internalResult = { success: true, enabled: true, scannedCount: 0, events: [] };
+    trigger.mockResolvedValue(internalResult);
+
+    const response = await handler(mcpRequest({
+      skillId: " skill_1 ",
+      skillVersion: 2,
+      kind: "success",
+      attribution: "user-confirmed",
+      project: " project-a ",
+      agentId: " agent-a ",
+      sessionId: " session-a ",
+      limit: 20,
+    }));
+
+    expect(JSON.parse((response.body as { content: Array<{ text: string }> }).content[0]!.text)).toEqual(internalResult);
+    expect(trigger).toHaveBeenCalledWith({
+      function_id: "mem::skill-feedback-diagnostics",
+      payload: {
+        skillId: "skill_1",
+        skillVersion: 2,
+        kind: "success",
+        attribution: "user-confirmed",
+        project: "project-a",
+        agentId: "agent-a",
+        sessionId: "session-a",
+        limit: 20,
+      },
+    });
+
+    for (const arguments_ of [
+      {},
+      { skillId: "skill_1", kind: "unknown" },
+      { skillId: "skill_1", attribution: "unknown" },
+      { skillId: "skill_1", skillVersion: 1.5 },
+      { skillId: "skill_1", limit: 0 },
+      { skillId: "skill_1", project: "   " },
+    ]) {
+      trigger.mockClear();
+      await expect(handler(mcpRequest(arguments_))).resolves.toEqual({
+        status_code: 400,
+        body: { error: "invalid skill feedback diagnostics input" },
+      });
+      expect(trigger).not.toHaveBeenCalled();
+    }
+    expectNoKvAccess(kv);
+  });
+
+  it("routes MCP diagnostics to the existing Phase 2A function without ledger writes", async () => {
+    enableDiagnostics();
+    const rows = [feedbackEvent("feedback_1")];
+    const routed = createSdk({ routeRegisteredFunctions: true });
+    const kv = createCountedKv(rows);
+    registerSkillFeedbackDiagnosticsFunction(routed.sdk as never, kv as never);
+    registerMcpEndpoints(routed.sdk as never, kv as never);
+    const handler = routed.functions.get("mcp::tools::call")! as McpHandler;
+
+    const response = await handler(mcpRequest({ skillId: "skill_release", limit: 1 }));
+    const body = JSON.parse((response.body as { content: Array<{ text: string }> }).content[0]!.text);
+
+    expect(body).toMatchObject({ success: true, enabled: true, returnedCount: 1 });
+    expect(routed.trigger).toHaveBeenCalledWith({
+      function_id: "mem::skill-feedback-diagnostics",
+      payload: { skillId: "skill_release", limit: 1 },
+    });
     expect(kv.listCalls).toEqual([KV.skillFeedback]);
     expect(kv.getCalls).toEqual([]);
     expect(kv.setCalls).toEqual([]);
