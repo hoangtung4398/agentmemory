@@ -375,6 +375,7 @@ export interface SkillConfig {
   feedbackEnabled: boolean;
   feedbackDiagnosticsEnabled: boolean;
   feedbackDiagnosticsLimit: number;
+  feedbackReducerEnabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
   recallEnabled: boolean;
@@ -824,6 +825,36 @@ export interface SkillFeedbackAggregate {
   }>;
   earliestCreatedAt?: string;
   latestCreatedAt?: string;
+}
+
+export interface SkillFeedbackReductionPlanInput {
+  skillId?: unknown;
+  skillVersion?: unknown;
+  project?: unknown;
+  agentId?: unknown;
+}
+
+export interface SkillFeedbackReductionPlanCounters {
+  success: number;
+  failure: number;
+}
+
+export interface SkillFeedbackReductionPlanResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  skillId?: string;
+  skillVersion?: number;
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  applicableCount: number;
+  ignoredCount: number;
+  proposedDelta: SkillFeedbackReductionPlanCounters;
+  currentCounters?: SkillFeedbackReductionPlanCounters;
+  proposedCounters?: SkillFeedbackReductionPlanCounters;
+  sourceEventIds: string[];
+  reason?: string;
 }
 
 export interface TeamConfig {
