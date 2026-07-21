@@ -438,6 +438,22 @@ Phase 3A is not reinforcement. Phase 3B, idempotent application of approved
 counter deltas with its own atomicity design, remains future and separately
 reviewed.
 
+### Phase 3B Idempotency Contract
+
+The Phase 3B design contract is documented in
+[`skill-feedback-reducer-idempotency.md`](skill-feedback-reducer-idempotency.md).
+It selects a future single-record design: optional reduction metadata is
+colocated with an `AgentSkill`, absolute counters derive from an immutable
+per-version baseline and complete canonical evidence hash, and a future write
+requires a proven conditional atomic update to the same skill key. The current
+process-local keyed mutex is not sufficient for multi-worker safety.
+
+This is documentation only. It neither adds the proposed metadata nor permits
+an apply function, a receipt scope, an audit path, or any counter mutation.
+Phase 3B implementation remains separately authorized after state-layer
+conditional-update semantics are proven by source inspection and concurrency
+tests.
+
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
 returns the corresponding MCP diagnostic. This is expected default-off behavior,
@@ -473,9 +489,12 @@ lifecycle check; PR13b does not invent or persist a new status.
    It delegates to the Phase 2A reader without adding a write path.
 5. **Phase 3A - Read-only deterministic reduction planning: implemented by
    this milestone.** It proposes counter deltas but never applies them.
-6. **Phase 3B - Idempotent application of approved counter deltas: future.**
-   Any quality change requires a dedicated atomicity and idempotency design.
-7. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+6. **Phase 3B design - Idempotency and atomicity contract: documented.** It
+   defines prerequisites only and does not apply counter deltas.
+7. **Phase 3B implementation - Idempotent application of approved counter
+   deltas: future.** Any quality change requires the separately reviewed
+   conditional-update implementation.
+8. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
