@@ -217,27 +217,37 @@ describe("mem::skill-feedback-diagnostics", () => {
 
   it("orders deterministically, limits returned rows, and aggregates all matches", async () => {
     enableDiagnostics();
-    kv.rows.push(
+    const storedEvents = [
       event("b", { skillVersion: 2, kind: "failure", attribution: "agent-observed", createdAt: "2026-07-22T00:00:00.000Z" }),
       event("a", { skillVersion: 1, kind: "success", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("B", { skillVersion: 1, kind: "success", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("_", { skillVersion: 2, kind: "stale", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("ä", { skillVersion: 1, kind: "correction", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("newer", { skillVersion: 2, kind: "failure", attribution: "agent-observed", createdAt: "2026-07-23T00:00:00.000Z" }),
       event("old", { skillVersion: 1, kind: "correction", createdAt: "2026-07-20T00:00:00.000Z" }),
-      event("stale", { skillVersion: 2, kind: "stale", createdAt: "2026-07-19T00:00:00.000Z" }),
-    );
+    ];
+    const before = JSON.stringify(storedEvents);
+    kv.rows.push(...storedEvents);
 
-    const result = await diagnose({ skillId: "skill_release", limit: 2 });
-    expect(result.events.map((item: SkillFeedbackEvent) => item.id)).toEqual(["a", "b"]);
-    expect(result).toMatchObject({ matchedCount: 4, returnedCount: 2, truncated: true });
-    expect(result.aggregate).toEqual({
-      total: 4,
-      byKind: { success: 1, failure: 1, correction: 1, stale: 1 },
-      byAttribution: { "user-confirmed": 3, "agent-observed": 1 },
+    const limited = await diagnose({ skillId: "skill_release", limit: 3 });
+    expect(limited.events.map((item: SkillFeedbackEvent) => item.id)).toEqual(["newer", "B", "_"]);
+    expect(limited).toMatchObject({ matchedCount: 7, returnedCount: 3, truncated: true });
+    expect(limited.aggregate).toEqual({
+      total: 7,
+      byKind: { success: 2, failure: 2, correction: 2, stale: 1 },
+      byAttribution: { "user-confirmed": 5, "agent-observed": 2 },
       byVersion: [
-        { skillVersion: 1, total: 2, success: 1, failure: 0, correction: 1, stale: 0 },
-        { skillVersion: 2, total: 2, success: 0, failure: 1, correction: 0, stale: 1 },
+        { skillVersion: 1, total: 4, success: 2, failure: 0, correction: 2, stale: 0 },
+        { skillVersion: 2, total: 3, success: 0, failure: 2, correction: 0, stale: 1 },
       ],
-      earliestCreatedAt: "2026-07-19T00:00:00.000Z",
-      latestCreatedAt: "2026-07-22T00:00:00.000Z",
+      earliestCreatedAt: "2026-07-20T00:00:00.000Z",
+      latestCreatedAt: "2026-07-23T00:00:00.000Z",
     });
+
+    const allEvents = await diagnose({ skillId: "skill_release", limit: 500 });
+    expect(allEvents.events.map((item: SkillFeedbackEvent) => item.id)).toEqual(["newer", "B", "_", "a", "b", "ä", "old"]);
+    expect(JSON.stringify(storedEvents)).toBe(before);
+    expect(JSON.stringify(kv.rows)).toBe(before);
   });
 
   it("uses the configured default limit and returns zero aggregates for an empty ledger", async () => {

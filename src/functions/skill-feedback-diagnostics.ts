@@ -157,10 +157,16 @@ function matchesFilters(event: SkillFeedbackEvent, filters: SkillFeedbackDiagnos
     (filters.sessionId === undefined || event.sessionId === filters.sessionId);
 }
 
+function compareIdsAscending(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 function sortEvents(events: SkillFeedbackEvent[]): SkillFeedbackEvent[] {
   return [...events].sort((a, b) => {
     const timestampDifference = Date.parse(b.createdAt) - Date.parse(a.createdAt);
-    return timestampDifference !== 0 ? timestampDifference : a.id.localeCompare(b.id);
+    return timestampDifference !== 0 ? timestampDifference : compareIdsAscending(a.id, b.id);
   });
 }
 
