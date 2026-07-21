@@ -16,7 +16,7 @@ function escapeXmlAttr(value: string): string {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -34,10 +34,19 @@ function isAdvisory(value: unknown): value is SkillAdvisory {
     advisory.steps.every((step) => step.trim().length > 0) &&
     isNonEmptyString(advisory.expectedOutcome) &&
     isStringArray(advisory.antiPatterns) &&
+    isStringArray(advisory.files) &&
+    isStringArray(advisory.concepts) &&
     isStringArray(advisory.sourceProceduralMemoryIds) &&
     typeof advisory.confidence === "number" &&
     Number.isFinite(advisory.confidence) &&
-    advisory.confidence >= 0 && advisory.confidence <= 1;
+    advisory.confidence >= 0 && advisory.confidence <= 1 &&
+    typeof advisory.strength === "number" &&
+    Number.isFinite(advisory.strength) &&
+    advisory.strength >= 0 && advisory.strength <= 1 &&
+    typeof advisory.score === "number" &&
+    Number.isFinite(advisory.score) &&
+    (advisory.project === undefined || isNonEmptyString(advisory.project)) &&
+    (advisory.agentId === undefined || isNonEmptyString(advisory.agentId));
 }
 
 export function parseSkillAdvisories(value: unknown): SkillAdvisory[] | null {
