@@ -44,9 +44,38 @@ The future implementation must handle repeated application, same-process and
 multi-process concurrency, crashes before/after write, feedback arriving
 between plan/apply, stale versions, changed counters, malformed rows, duplicate
 IDs, unexpectedly altered or removed rows, failed reads/writes, and timeouts
-with unknown write outcome. Each case returns apply, no-op, conflict, integrity
-failure, read failure, write failure, or write outcome unknown. No case uses
-best-effort counter mutation.
+with unknown write outcome. No case uses best-effort counter mutation.
+
+| Scenario | Required outcome | Write allowed? |
+| --- | --- | --- |
+| First valid application | `apply` | One conditional skill write |
+| Identical replay after confirmed application | `no-op` | No |
+| Retry after a response was lost but the write committed | `no-op` after reread and recompute | No |
+| Same-process concurrent calls | One may apply; a later call returns no-op or conflict | At most one successful conditional write |
+| Multi-worker concurrent calls | One CAS may succeed; losers return conflict | At most one successful conditional write |
+| Crash before conditional write | Read/write failure or retryable failure | No committed change |
+| Crash after committed write before response | `skill feedback reduction write outcome unknown` | Do not issue a blind second write |
+| New feedback between planning and applying | `stale evidence hash` conflict | No |
+| Requested version differs from current skill version | `skill version conflict` | No |
+| Skill version changes before write | Conflict | No |
+| Counters or reduction metadata change before write | Conflict | No |
+| Malformed ledger rows coexist with valid rows | Count and skip malformed rows | Application may continue using valid evidence |
+| Duplicate applicable event IDs | Integrity failure | No |
+| Applicable event count decreases | `feedback evidence regression` integrity failure | No |
+| Event count is unchanged but evidence hash changes | Evidence-alteration integrity failure | No |
+| Event count increases and expected hash is current | Recompute absolute target from baseline | One conditional write |
+| Feedback ledger read fails | Read failure | No |
+| Skill read fails | Read failure | No |
+| Conditional write definitively fails before commit | Write failure | No committed change |
+| Conditional write precondition fails | Conflict | No |
+| Write times out with unknown commit status | `skill feedback reduction write outcome unknown` | No blind retry |
+
+For an increased event count, a larger count plus a changed full hash is treated
+as new append-only evidence. The initial design cannot cryptographically prove
+that an older row was not replaced while another row was appended. Absolute
+recomputation from the immutable baseline prevents double addition, but does
+not prove ledger history. A future digest chain or retained event-ID commitment
+would provide stronger proof; neither is authorized by this design.
 
 ## 4. Selected idempotency design
 
@@ -111,21 +140,33 @@ perform no write.
 
 Use Phase 3A selection rules: matching skill ID/current version, exact requested
 project and agent scope, no skill-scope contradiction, and valid feedback rows.
-Sort `createdAt` descending then `id` ascending for equal timestamps.
+`canonicalApplicableEvents` is the UTF-8 byte sequence of a compact JSON
+serialization of the sorted event array. Sort by `createdAt` descending, then
+by `id` in UTF-16 code-unit ascending order for equal timestamps.
 
-Canonicalize each event with fixed key order:
+Each event object emits every key in this exact order:
 
 ```ts
 { id, skillId, skillVersion, kind, attribution, source, project, agentId,
   sessionId, sourceObservationIds, sourceSessionIds, createdAt }
 ```
 
-Absent optionals use one documented representation; validated array order is
-preserved; key order is fixed by the canonical serializer; locale-sensitive
-comparison is prohibited. Compute lowercase hexadecimal SHA-256:
+Absent `project`, `agentId`, and `sessionId` are JSON `null`; their keys are
+never omitted. The serialization has no insignificant whitespace, uses standard
+JSON string escaping, and emits validated numbers in their decimal JSON
+representation. `sourceObservationIds` and `sourceSessionIds` preserve their
+validated stored order. Locale-sensitive comparison is prohibited. Compute the
+lowercase hexadecimal SHA-256 of the exact UTF-8 byte sequence:
 
 ```text
 evidenceHash = sha256(canonicalApplicableEvents)
+```
+
+For example, an event with no project, agent, or session uses this compact form
+(the source arrays retain their stored order):
+
+```json
+[{"id":"evt-1","skillId":"skill-1","skillVersion":2,"kind":"success","attribution":"direct","source":"user","project":null,"agentId":null,"sessionId":null,"sourceObservationIds":["obs-2","obs-1"],"sourceSessionIds":[],"createdAt":"2026-07-21T00:00:00.000Z"}]
 ```
 
 The hash detects appended/altered evidence, kind/scope/version changes, and
@@ -211,10 +252,27 @@ interface SkillFeedbackReductionApplyResult {
 
 Apply recomputes evidence inside the protected conditional path, requires the
 expected hash, never trusts caller deltas/counters, rejects stale hashes, and
-never accepts arbitrary delta input. Stable reasons include disabled, invalid
-input, skill not found, version conflict, stale hash, duplicate ID, evidence
-regression, reduction-state integrity failure, skill changed during application,
-failed read/apply, and write outcome unknown.
+never accepts arbitrary delta input. The stable future reason strings are:
+
+```text
+skill feedback reducer is disabled
+invalid skill feedback reduction apply input
+skill not found
+skill version conflict
+stale evidence hash
+duplicate feedback event id
+feedback evidence regression
+skill reduction state integrity failure
+skill changed during application
+failed to load skill feedback reduction application
+failed to apply skill feedback reduction
+skill feedback reduction write outcome unknown
+```
+
+Conflict and integrity failure are distinct outcomes. Write outcome unknown is
+never reported as a confirmed failure. A retry after that outcome rereads and
+recomputes first; callers must not blindly resubmit a previous replacement
+record.
 
 ## 10. Write sequence contract
 
@@ -267,49 +325,106 @@ mutex cannot protect multiple processes.
 
 Each needs its own design, tests, review, and authorization.
 
-## 16. Relationship to the skill-layer roadmap
+## 16. Future implementation test matrix
+
+### Gate and validation
+
+- Disabled gate before any KV read.
+- Malformed input before any KV read.
+- Feedback writer disabled while the apply gate is enabled.
+- Missing skill.
+- Requested-version mismatch.
+
+### Evidence and hashing
+
+- Deterministic hash across repeated calls.
+- Canonical optional fields use JSON `null`.
+- Equal timestamps use the ID tie-break.
+- Malformed rows are skipped and counted.
+- Duplicate valid IDs are rejected.
+- Count regression is rejected.
+- Equal count plus changed hash is rejected.
+- New appended evidence produces a new hash.
+- Stale expected hash is rejected.
+
+### Baseline and counters
+
+- First application captures the baseline.
+- Target counters use baseline plus the full aggregate.
+- Identical replay is a no-op.
+- New evidence recomputes from baseline.
+- The `success`/`failure`/`correction`/`stale` mapping remains unchanged.
+- Counter divergence with a matching hash fails closed.
+- Version transition creates a new version baseline.
+- Future-version reduction state fails integrity checks.
+
+### Atomicity and concurrency
+
+- Same-process concurrent calls.
+- Two-worker CAS race with only one successful conditional write.
+- Failed CAS returns conflict and a stale write is not automatically retried.
+- Crash before commit.
+- Response loss after commit.
+- Definitive write failure.
+- Write outcome unknown.
+- Retry after outcome unknown resolves to no-op when the first write committed.
+
+### Preservation
+
+- Unrelated `AgentSkill` fields remain byte-for-byte equivalent.
+- Feedback events remain unchanged and no event is consumed.
+- No audit is required for idempotency.
+- A no-op does not modify `updatedAt`; an actual application does.
+- Confidence, strength, usage, status, and version remain unchanged.
+- No REST, MCP, CLI, or hook registration appears.
+
+## 17. Relationship to the skill-layer roadmap
 
 Phase 3A is implemented read-only planning. This is the Phase 3B idempotency
 and atomicity contract, not implementation. Phase 4 lifecycle work remains
 separate. Do not mark Phase 3B implemented.
 
-## 17. Prohibited changes
+## 18. Prohibited changes
 
 This milestone does not change source, tests, configuration, state layer,
 generated references, REST/MCP/hooks, or tool counts. It adds no metadata in
 code, CAS primitive, receipt scope, apply function, environment variable, or
 ranking/search change.
 
-## 18. Documentation validation
+## 19. Documentation validation
 
 The design PR changes only this file and `docs/skill-layer-design.md`. Run
 TypeScript, build, skills check, full tests, and `git diff --check`. Surface
 counts remain 60 MCP tools and 135 REST registrations.
 
-## 19. Commit and push
+## 20. Commit and push
 
 Use one signed-off `docs: design skill feedback reducer idempotency` commit on
 `docs/skill-feedback-reducer-idempotency-design`. Do not amend, rebase,
 force-push, add cleanup commits, or modify source after validation.
 
-## 20. Post-push verification
+## 21. Post-push verification
 
 The branch must be clean, one ahead, zero behind, identical locally/remotely,
 and differ from `main` in exactly these two documentation files.
 
-## 21. Draft PR
+## 22. Draft PR
 
 Open a Draft PR titled `docs: design skill feedback reducer idempotency` from
 `docs/skill-feedback-reducer-idempotency-design` to `main`. Do not mark Ready,
 request reviewers, add labels, enable auto-merge, or start Phase 3B1.
 
-## 22. CI policy
+## 23. CI policy
 
-All Ubuntu/macOS Node 20/22 jobs must pass install, build, skills check, and
-full tests. On failure, report run/job/step/error and classify documentation,
-tooling, existing regression, or environment. Do not rerun or patch automatically.
+The repository CI workflow ignores `docs/**`, `**/*.md`, and `**/*.mdx`. A
+docs-only PR therefore has no PR-triggered workflow run; that absence is neither
+success nor failure. Local TypeScript, build, skills check, full tests, and
+`git diff --check` remain mandatory. Do not change source, configuration, or a
+workflow solely to trigger CI, and do not manually dispatch CI unless separately
+authorized. If CI applies to a future non-docs change, all Ubuntu/macOS Node
+20/22 jobs must pass install, build, skills check, and full tests.
 
-## 23. Review policy
+## 24. Review policy
 
 After CI, inspect comments, reviews, requested changes, inline comments, and
 unresolved threads once. Classify findings as design blocker, valid
@@ -317,7 +432,7 @@ clarification, implementation-phase request, or unrelated. Do not address
 comments, mark Ready, or merge in the same run; each requires separate explicit
 authorization.
 
-## 24. Report and stop
+## 25. Report and stop
 
 Report branch/commit state, the exact two files, selected single-record design,
 baseline/hash/replay/duplicate/version/concurrency rules, validation/CI/review

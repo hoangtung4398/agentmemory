@@ -489,12 +489,19 @@ lifecycle check; PR13b does not invent or persist a new status.
    It delegates to the Phase 2A reader without adding a write path.
 5. **Phase 3A - Read-only deterministic reduction planning: implemented by
    this milestone.** It proposes counter deltas but never applies them.
-6. **Phase 3B design - Idempotency and atomicity contract: documented.** It
-   defines prerequisites only and does not apply counter deltas.
-7. **Phase 3B implementation - Idempotent application of approved counter
-   deltas: future.** Any quality change requires the separately reviewed
-   conditional-update implementation.
-8. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+6. **Phase 3B Design - Idempotency and atomic application contract:
+   documented.** It defines prerequisites only and does not apply counter
+   deltas.
+7. **Phase 3B1 - Read-only planner contract hardening: future and separately
+   authorized.** It remains zero-write.
+8. **Phase 3B2 - Conditional state primitive: future and separately
+   authorized.** It must prove conditional state semantics before any reducer
+   write.
+9. **Phase 3B3 - Internal counter application: future and separately
+   authorized.** It may proceed only after the reviewed conditional primitive.
+10. **Phase 3B4 - Optional reviewed public surface: future and not implied by
+    prior phases.** Any REST or MCP exposure requires its own authorization.
+11. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
