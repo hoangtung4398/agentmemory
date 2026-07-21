@@ -412,11 +412,13 @@ evidence counts and defensive event copies.
 The aggregate is not reinforcement: it does not read the current skill, infer
 success, emit recommendations, or change counters, confidence, strength, status,
 or lifecycle. It has no REST, MCP, hook, context, recall, promotion, audit, index,
-or write surface. Phase 2B1 adds an authenticated read-only REST adapter at
+or write surface. Phase 2B1 adds only an authenticated read-only REST adapter at
 `GET /agentmemory/skill-feedback/diagnostics`. It requires `skillId`, forwards
 only validated query representations to the internal reader, returns `503` when
 disabled, `400` for invalid input, and never accesses KV directly. No MCP
-diagnostics surface exists yet.
+feedback-diagnostics surface exists yet. A possible MCP adapter is reserved for
+the separately reviewed Phase 2B2 milestone; Phase 2B1 does not authorize its
+implementation.
 
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
@@ -444,13 +446,17 @@ lifecycle check; PR13b does not invent or persist a new status.
    Direct-only feedback preserves source evidence without
    mutating an `AgentSkill`.
 2. **Phase 2A - Internal read-only diagnostics and deterministic aggregation:
-   merged.** It may inspect ledger evidence but cannot update skill quality or
-   lifecycle state.
+   implemented and merged.** It may inspect ledger evidence but cannot update
+   skill quality or lifecycle state.
 3. **Phase 2B1 - Authenticated REST diagnostics surface: implemented by this
-   milestone.** MCP diagnostics remain future.
-4. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
+   milestone.** It delegates to the Phase 2A reader and introduces no direct KV
+   access or write behavior.
+4. **Phase 2B2 - Optional MCP diagnostics surface: future.** Any MCP exposure
+   requires a separate design, implementation, tests, review, and merge
+   authorization.
+5. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
    Any quality change requires a dedicated, reviewed reducer.
-5. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+6. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
