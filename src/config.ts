@@ -347,6 +347,10 @@ export function loadSkillConfig(): SkillConfig {
     env["AGENTMEMORY_SKILL_FEEDBACK"],
     false,
   );
+  const feedbackDiagnosticsEnabled = enabled && parseBooleanEnv(
+    env["AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS"],
+    false,
+  );
   const recallEnabled = enabled && parseBooleanEnv(
     env["AGENTMEMORY_SKILL_RECALL"],
     false,
@@ -363,6 +367,13 @@ export function loadSkillConfig(): SkillConfig {
   return {
     enabled,
     feedbackEnabled,
+    feedbackDiagnosticsEnabled,
+    feedbackDiagnosticsLimit: parseClampedInt(
+      env["AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT"],
+      100,
+      1,
+      500,
+    ),
     diagnosticsEnabled: enabled && parseBooleanEnv(
       env["AGENTMEMORY_SKILL_DIAGNOSTICS"],
       true,

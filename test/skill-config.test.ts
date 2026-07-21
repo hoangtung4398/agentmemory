@@ -12,6 +12,8 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILL_CONTEXT",
   "AGENTMEMORY_SKILL_CONTEXT_TOKEN_BUDGET",
   "AGENTMEMORY_SKILL_FEEDBACK",
+  "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
+  "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -64,6 +66,8 @@ describe("AgentSkill read model configuration", () => {
     expect(loadSkillConfig()).toEqual({
       enabled: false,
       feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackDiagnosticsLimit: 100,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -84,6 +88,8 @@ describe("AgentSkill read model configuration", () => {
     expect(loadSkillConfig()).toEqual({
       enabled: true,
       feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackDiagnosticsLimit: 100,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -117,6 +123,8 @@ describe("AgentSkill read model configuration", () => {
     expect(loadSkillConfig()).toEqual({
       enabled: true,
       feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackDiagnosticsLimit: 100,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
       recallEnabled: false,
@@ -144,6 +152,8 @@ describe("AgentSkill read model configuration", () => {
     expect(loadSkillConfig()).toEqual({
       enabled: true,
       feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackDiagnosticsLimit: 100,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
       recallEnabled: false,
@@ -196,6 +206,31 @@ describe("AgentSkill read model configuration", () => {
     expect(loadSkillConfig()).toMatchObject({
       enabled: true,
       feedbackEnabled: true,
+      recallEnabled: false,
+      contextEnabled: false,
+      promotionEnabled: false,
+    });
+  });
+
+  it("keeps feedback diagnostics independent from feedback recording", async () => {
+    process.env["AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS"] = "true";
+    process.env["AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT"] = "0";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackDiagnosticsLimit: 1,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    process.env["AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT"] = "900";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig()).toMatchObject({
+      feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: true,
+      feedbackDiagnosticsLimit: 500,
       recallEnabled: false,
       contextEnabled: false,
       promotionEnabled: false,
