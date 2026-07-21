@@ -4,10 +4,10 @@
 
 This is the PR11 design document for an opt-in Skill / Self-Improvement Layer
 for AgentMemory. PR12 now implements only its additive, default-off read model
-and diagnostics scaffold. PR13a adds direct promotion, PR13b adds advisory
-context recall, and the current feedback-ledger milestone adds only explicit,
-append-only feedback evidence. None of these stages adds enforcement or an
-automatic skill lifecycle reducer.
+and diagnostics scaffold. PR13a adds direct promotion. Subsequent milestones
+add promotion eligibility and inventory diagnostics, advisory recall, bounded
+context injection, and the current explicit append-only feedback ledger. None
+of these stages adds enforcement or an automatic skill lifecycle reducer.
 
 The Decision Engine PR1-PR10 and its milestone documentation are already in
 `main`. This document designs how durable procedural evidence could become
@@ -17,8 +17,11 @@ reusable agent guidance without changing existing memory behavior.
 
 - No automatic tool execution, code modification, or skill enforcement.
 - No LLM classifier or working-memory enforcement.
-- No changes to observe, remember, search, smart search, context,
-  consolidation, ranking, vector search, graph search, REST, MCP, or hooks.
+- No changes to observe, remember, search, smart search, consolidation,
+  ranking, vector search, graph search, REST, MCP, or hooks. Existing
+  retrieval and ranking behavior remains unchanged.
+- Context injection is additive, separately gated, and advisory-only. No hook
+  or command automatically records feedback.
 - No existing KV record-shape changes and no company-repository changes.
 
 The first implementation milestone after this design must be advisory only. A
@@ -417,24 +420,21 @@ queues, indexes, timestamps, counters, or statuses. `ProceduralMemory` has no
 status field in the current KV shape, so source existence is the current source
 lifecycle check; PR13b does not invent or persist a new status.
 
-## Conservative Implementation Roadmap
+## Explicit Feedback Roadmap
 
-The following PRs remain future work after PR12:
+1. **Phase 1 - Explicit append-only feedback ledger: implemented by this
+   milestone.** Direct-only feedback preserves source evidence without
+   mutating an `AgentSkill`.
+2. **Phase 2 - Read-only feedback diagnostics and deterministic aggregation:
+   future.** It may inspect ledger evidence but cannot update skill quality or
+   lifecycle state.
+3. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
+   Any quality change requires a dedicated, reviewed reducer.
+4. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+   changes remain explicit and auditable.
 
-1. **PR13: Promote ProceduralMemory to skill candidate behind explicit
-   configuration.** Add opt-in promotion into a new skill scope with
-   provenance and no injection.
-2. **PR14: Skill recall diagnostics.** Explain why a future skill matched,
-   was skipped, or was excluded by scope or budget.
-3. **PR15: Skill context injection in advisory mode.** Implemented as a
-   default-off, separately budgeted `mem::context` append-only advisory section.
-   It reuses skill recall, does not change current retrieval behavior, execute
-   commands, or record usage/success.
-4. **PR16: Skill reinforcement metrics.** Add explicit success/failure,
-   correction, staleness, retirement, and supersession accounting.
-5. **Later: LLM-assisted skill extraction in shadow mode only.** It may
-   propose candidates but cannot promote, inject, or enforce without
-   separately approved validation and compatibility work.
+Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
+remain out of scope.
 
 Each future PR must preserve the default-off posture, introduce one auditable
 behavior at a time, and avoid unrelated refactors or ranking work.

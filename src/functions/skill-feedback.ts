@@ -129,8 +129,17 @@ function validTimestamp(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
 }
 
-function validStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => nonEmptyString(item, MAX_SCOPE_ID_LENGTH) !== undefined);
+function validPersistedString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validPersistedStringArray(
+  value: unknown,
+  requireEntry = false,
+): value is string[] {
+  return Array.isArray(value) &&
+    (!requireEntry || value.length > 0) &&
+    value.every(validPersistedString);
 }
 
 function validOptionalScope(value: unknown): value is string | undefined {
@@ -143,17 +152,17 @@ function isValidAgentSkill(value: unknown, skillId: string): value is AgentSkill
   return skill.id === skillId &&
     skill.status === "active" &&
     Number.isInteger(skill.version) && (skill.version as number) > 0 &&
-    nonEmptyString(skill.name, MAX_SCOPE_ID_LENGTH) !== undefined &&
-    nonEmptyString(skill.triggerCondition, MAX_SCOPE_ID_LENGTH) !== undefined &&
-    nonEmptyString(skill.expectedOutcome, MAX_SCOPE_ID_LENGTH) !== undefined &&
-    validStringArray(skill.steps) &&
-    validStringArray(skill.antiPatterns) &&
-    validStringArray(skill.files) &&
-    validStringArray(skill.concepts) &&
-    validStringArray(skill.sourceProceduralMemoryIds) &&
-    validStringArray(skill.sourceCandidateIds) &&
-    validStringArray(skill.sourceObservationIds) &&
-    validStringArray(skill.sourceSessionIds) &&
+    validPersistedString(skill.name) &&
+    validPersistedString(skill.triggerCondition) &&
+    validPersistedString(skill.expectedOutcome) &&
+    validPersistedStringArray(skill.steps, true) &&
+    validPersistedStringArray(skill.antiPatterns) &&
+    validPersistedStringArray(skill.files) &&
+    validPersistedStringArray(skill.concepts) &&
+    validPersistedStringArray(skill.sourceProceduralMemoryIds) &&
+    validPersistedStringArray(skill.sourceCandidateIds) &&
+    validPersistedStringArray(skill.sourceObservationIds) &&
+    validPersistedStringArray(skill.sourceSessionIds) &&
     typeof skill.confidence === "number" && Number.isFinite(skill.confidence) && skill.confidence >= 0 && skill.confidence <= 1 &&
     typeof skill.strength === "number" && Number.isFinite(skill.strength) && skill.strength >= 0 && skill.strength <= 1 &&
     [skill.usageCount, skill.successCount, skill.failureCount].every((count) =>

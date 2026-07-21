@@ -227,7 +227,6 @@ describe("mem::skill-feedback-record", () => {
       null,
       "skill_release",
       [],
-      skill({ id: "different" }),
       skill({ status: "retired" }),
       skill({ status: "superseded" }),
       skill({ project: " " }),
@@ -255,6 +254,52 @@ describe("mem::skill-feedback-record", () => {
       });
       expect(kv.setCalls).toEqual([]);
     }
+  });
+
+  it("rejects empty skill steps without writing feedback", async () => {
+    enableFeedback();
+    await seedSkill(skill({ steps: [] }));
+
+    await expect(record()).resolves.toEqual({
+      success: false,
+      recorded: false,
+      duplicate: false,
+      reason: "agent skill is missing or invalid",
+    });
+    expect(kv.setCalls).toEqual([]);
+  });
+
+  it("rejects an actual persisted-ID mismatch without writing feedback", async () => {
+    enableFeedback();
+    await kv.set(KV.skills, "skill_release", skill({ id: "different" }));
+    kv.clearCalls();
+
+    await expect(record()).resolves.toEqual({
+      success: false,
+      recorded: false,
+      duplicate: false,
+      reason: "agent skill is missing or invalid",
+    });
+    expect(kv.setCalls).toEqual([]);
+  });
+
+  it("accepts long persisted instruction content without copying it to feedback", async () => {
+    enableFeedback();
+    const longContent = "x".repeat(800);
+    const storedSkill = await seedSkill(skill({
+      expectedOutcome: longContent,
+      steps: [longContent],
+    }));
+    const before = JSON.stringify(storedSkill);
+
+    await expect(record({ idempotencyKey: "long-content" })).resolves.toMatchObject({
+      success: true,
+      recorded: true,
+      duplicate: false,
+    });
+    const event = kv.setCalls.at(-1)!.value as SkillFeedbackEvent;
+    expect(JSON.stringify(event)).not.toContain(longContent);
+    expect(JSON.stringify(await kv.get(KV.skills, "skill_release"))).toBe(before);
   });
 
   it("enforces exact project and agent scope without narrowing a global skill", async () => {
