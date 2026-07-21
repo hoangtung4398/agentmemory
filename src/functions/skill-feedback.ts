@@ -3,6 +3,11 @@ import { loadSkillConfig } from "../config.js";
 import { fingerprintId, KV } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { StateKV } from "../state/kv.js";
+import {
+  isSkillFeedbackAttribution,
+  isSkillFeedbackKind,
+  isValidSkillFeedbackEvent,
+} from "./skill-feedback-model.js";
 import type {
   AgentSkill,
   SkillFeedbackAttribution,
@@ -78,14 +83,6 @@ function normalizedStringArray(value: unknown): string[] | undefined {
   return result;
 }
 
-function isKind(value: unknown): value is SkillFeedbackKind {
-  return value === "success" || value === "failure" || value === "correction" || value === "stale";
-}
-
-function isAttribution(value: unknown): value is SkillFeedbackAttribution {
-  return value === "user-confirmed" || value === "agent-observed";
-}
-
 function normalizeRequest(
   data: SkillFeedbackRecordInput | undefined,
 ): NormalizedSkillFeedbackRequest | undefined {
@@ -100,8 +97,8 @@ function normalizeRequest(
   if (
     !idempotencyKey ||
     !skillId ||
-    !isKind(data?.kind) ||
-    !isAttribution(data?.attribution) ||
+    !isSkillFeedbackKind(data?.kind) ||
+    !isSkillFeedbackAttribution(data?.attribution) ||
     project === null ||
     agentId === null ||
     sessionId === null ||
@@ -177,31 +174,6 @@ function isValidAgentSkill(value: unknown, skillId: string): value is AgentSkill
     (skill.supersedes === undefined || nonEmptyString(skill.supersedes, MAX_SCOPE_ID_LENGTH) !== undefined);
 }
 
-function isNormalizedEvidenceArray(value: unknown): value is string[] {
-  return Array.isArray(value) &&
-    value.length <= MAX_EVIDENCE_IDS &&
-    value.every((item) => nonEmptyString(item, MAX_EVIDENCE_ID_LENGTH) === item) &&
-    new Set(value).size === value.length;
-}
-
-function isValidFeedbackEvent(value: unknown, feedbackId: string): value is SkillFeedbackEvent {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const event = value as Record<string, unknown>;
-  return event.id === feedbackId &&
-    nonEmptyString(event.skillId, MAX_SKILL_ID_LENGTH) === event.skillId &&
-    Number.isInteger(event.skillVersion) && (event.skillVersion as number) > 0 &&
-    isKind(event.kind) &&
-    isAttribution(event.attribution) &&
-    (event.kind !== "correction" || event.attribution === "user-confirmed") &&
-    event.source === "explicit" &&
-    validOptionalScope(event.project) &&
-    validOptionalScope(event.agentId) &&
-    validOptionalScope(event.sessionId) &&
-    isNormalizedEvidenceArray(event.sourceObservationIds) &&
-    isNormalizedEvidenceArray(event.sourceSessionIds) &&
-    validTimestamp(event.createdAt);
-}
-
 function createEvent(
   feedbackId: string,
   request: NormalizedSkillFeedbackRequest,
@@ -269,7 +241,7 @@ export function registerSkillFeedbackFunction(sdk: ISdk, kv: StateKV): void {
         }
 
         if (existing !== null) {
-          if (!isValidFeedbackEvent(existing, feedbackId)) {
+          if (!isValidSkillFeedbackEvent(existing, feedbackId)) {
             return failure("existing skill feedback event is malformed");
           }
           const expected = createEvent(

@@ -395,10 +395,24 @@ promotion-pipeline surface.
 The ledger does not infer success from display or recall and does not mutate an
 `AgentSkill`: usage/success/failure counters, confidence, strength, timestamps,
 status, supersession, and version remain unchanged. Reinforcement is therefore
-split into four later stages: (1) explicit append-only feedback ledger, (2)
-read-only feedback diagnostics and aggregation, (3) separately gated
-counter/reinforcement reduction, and (4) review-driven retirement and
-supersession.
+split into four stages: explicit append-only feedback, read-only diagnostics and
+aggregation, separately gated counter/reinforcement reduction, and review-driven
+retirement and supersession.
+
+### Read-Only Feedback Diagnostics
+
+Phase 2A adds the internal-only `mem::skill-feedback-diagnostics` reader. It is
+default-off behind `AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS` and requires only
+`AGENTMEMORY_SKILLS=true`; it can inspect historical ledger rows while
+`AGENTMEMORY_SKILL_FEEDBACK=false` prevents new records. The function reads only
+`mem:skill-feedback`, validates each row without repairing it, skips malformed
+rows while counting them, applies exact caller filters, and returns deterministic
+evidence counts and defensive event copies.
+
+The aggregate is not reinforcement: it does not read the current skill, infer
+success, emit recommendations, or change counters, confidence, strength, status,
+or lifecycle. It has no REST, MCP, hook, context, recall, promotion, audit, index,
+or write surface.
 
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
@@ -422,15 +436,17 @@ lifecycle check; PR13b does not invent or persist a new status.
 
 ## Explicit Feedback Roadmap
 
-1. **Phase 1 - Explicit append-only feedback ledger: implemented by this
-   milestone.** Direct-only feedback preserves source evidence without
+1. **Phase 1 - Explicit append-only feedback ledger: implemented and merged.**
+   Direct-only feedback preserves source evidence without
    mutating an `AgentSkill`.
-2. **Phase 2 - Read-only feedback diagnostics and deterministic aggregation:
-   future.** It may inspect ledger evidence but cannot update skill quality or
-   lifecycle state.
-3. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
+2. **Phase 2A - Internal read-only diagnostics and deterministic aggregation:
+   implemented by this milestone.** It may inspect ledger evidence but cannot
+   update skill quality or lifecycle state.
+3. **Phase 2B - Optional reviewed diagnostic surfaces: future.** It is not part
+   of the internal-only Phase 2A reader.
+4. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
    Any quality change requires a dedicated, reviewed reducer.
-4. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+5. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
