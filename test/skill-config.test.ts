@@ -14,6 +14,7 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILL_FEEDBACK",
   "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
   "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT",
+  "AGENTMEMORY_SKILL_FEEDBACK_REDUCER",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -68,6 +69,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
+      feedbackReducerEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -90,6 +92,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
+      feedbackReducerEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -125,6 +128,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
+      feedbackReducerEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
       recallEnabled: false,
@@ -154,6 +158,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
+      feedbackReducerEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
       recallEnabled: false,
@@ -231,6 +236,28 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: true,
       feedbackDiagnosticsLimit: 500,
+      recallEnabled: false,
+      contextEnabled: false,
+      promotionEnabled: false,
+    });
+  });
+
+  it("keeps read-only feedback reduction planning independent from feedback recording", async () => {
+    process.env["AGENTMEMORY_SKILL_FEEDBACK_REDUCER"] = "true";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      feedbackEnabled: false,
+      feedbackReducerEnabled: false,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig()).toMatchObject({
+      feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackReducerEnabled: true,
       recallEnabled: false,
       contextEnabled: false,
       promotionEnabled: false,

@@ -411,14 +411,32 @@ evidence counts and defensive event copies.
 
 The aggregate is not reinforcement: it does not read the current skill, infer
 success, emit recommendations, or change counters, confidence, strength, status,
-or lifecycle. It has no REST, MCP, hook, context, recall, promotion, audit, index,
-or write surface. Phase 2B1 adds only an authenticated read-only REST adapter at
-`GET /agentmemory/skill-feedback/diagnostics`. It requires `skillId`, forwards
-only validated query representations to the internal reader, returns `503` when
-disabled, `400` for invalid input, and never accesses KV directly. No MCP
-feedback-diagnostics surface exists yet. A possible MCP adapter is reserved for
-the separately reviewed Phase 2B2 milestone; Phase 2B1 does not authorize its
-implementation.
+or lifecycle. It has no hook, context, recall, promotion, audit, index, or write
+surface. Phase 2B1 adds an authenticated read-only REST adapter at
+`GET /agentmemory/skill-feedback/diagnostics`; Phase 2B2 adds the matching
+read-only MCP adapter. Both delegate to the internal reader, preserve its
+feature gate, and never access KV directly.
+
+### Read-Only Reduction Planning
+
+Phase 3A adds the internal-only `mem::skill-feedback-reduction-plan` function.
+It is default-off behind `AGENTMEMORY_SKILL_FEEDBACK_REDUCER` and requires only
+`AGENTMEMORY_SKILLS=true`; it can inspect historical ledger rows while
+`AGENTMEMORY_SKILL_FEEDBACK=false` prevents new records. The planner reads one
+current `AgentSkill` and the existing append-only feedback ledger, validates
+feedback without repairing it, and deterministically selects current-version,
+scope-compatible evidence using `createdAt` descending and `id` ascending for
+equal timestamps.
+
+The returned plan proposes only `successCount` and `failureCount` deltas:
+success contributes success `+1`; failure and correction each contribute failure
+`+1`; stale contributes no counter delta. It always returns `applied: false`.
+It does not write, consume, mark, or mutate feedback evidence; it does not alter
+usage count, confidence, strength, timestamps, status, supersession, version,
+or provenance. Repeated calls return the same plan for unchanged inputs.
+Phase 3A is not reinforcement. Phase 3B, idempotent application of approved
+counter deltas with its own atomicity design, remains future and separately
+reviewed.
 
 When diagnostics are disabled, `GET /agentmemory/skills` returns an explicit
 `503` feature-disabled response before reading `mem:skills`; `memory_skills`
@@ -451,12 +469,13 @@ lifecycle check; PR13b does not invent or persist a new status.
 3. **Phase 2B1 - Authenticated REST diagnostics surface: implemented by this
    milestone.** It delegates to the Phase 2A reader and introduces no direct KV
    access or write behavior.
-4. **Phase 2B2 - Optional MCP diagnostics surface: future.** Any MCP exposure
-   requires a separate design, implementation, tests, review, and merge
-   authorization.
-5. **Phase 3 - Separately gated counter and reinforcement reducer: future.**
-   Any quality change requires a dedicated, reviewed reducer.
-6. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+4. **Phase 2B2 - Optional MCP diagnostics surface: implemented and merged.**
+   It delegates to the Phase 2A reader without adding a write path.
+5. **Phase 3A - Read-only deterministic reduction planning: implemented by
+   this milestone.** It proposes counter deltas but never applies them.
+6. **Phase 3B - Idempotent application of approved counter deltas: future.**
+   Any quality change requires a dedicated atomicity and idempotency design.
+7. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
