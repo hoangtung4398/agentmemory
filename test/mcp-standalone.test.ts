@@ -72,8 +72,8 @@ describe("Tools Registry", () => {
     expect(CORE_TOOLS.length).toBe(14);
   });
 
-  it("V040_TOOLS has 13 items", () => {
-    expect(V040_TOOLS.length).toBe(13);
+  it("V040_TOOLS has 14 items", () => {
+    expect(V040_TOOLS.length).toBe(14);
   });
 
   it("all tools have required name, description, inputSchema fields", () => {

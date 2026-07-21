@@ -6,6 +6,9 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILLS",
   "AGENTMEMORY_SKILL_DIAGNOSTICS",
   "AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT",
+  "AGENTMEMORY_SKILL_RECALL",
+  "AGENTMEMORY_SKILL_RECALL_LIMIT",
+  "AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -59,6 +62,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
+      recallEnabled: false,
+      recallLimit: 3,
+      recallMinConfidence: 0.7,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -73,6 +79,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
+      recallEnabled: false,
+      recallLimit: 3,
+      recallMinConfidence: 0.7,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -100,6 +109,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
+      recallEnabled: false,
+      recallLimit: 3,
+      recallMinConfidence: 0.7,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -121,6 +133,9 @@ describe("AgentSkill read model configuration", () => {
       enabled: true,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
+      recallEnabled: false,
+      recallLimit: 3,
+      recallMinConfidence: 0.7,
       promotionEnabled: false,
       promotionMinStrength: 0.7,
       promotionMinEvidence: 2,
@@ -149,6 +164,31 @@ describe("AgentSkill read model configuration", () => {
       promotionEnabled: true,
       promotionMinStrength: 0,
       promotionMinEvidence: 10,
+    });
+  });
+
+  it("keeps advisory recall opt-in and clamps its independent thresholds", async () => {
+    process.env["AGENTMEMORY_SKILL_RECALL"] = "1";
+    process.env["AGENTMEMORY_SKILL_RECALL_LIMIT"] = "0";
+    process.env["AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE"] = "2";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      recallEnabled: false,
+      recallLimit: 1,
+      recallMinConfidence: 1,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    process.env["AGENTMEMORY_SKILL_RECALL_LIMIT"] = "99";
+    process.env["AGENTMEMORY_SKILL_RECALL_MIN_CONFIDENCE"] = "-1";
+    ({ loadSkillConfig } = await freshConfig());
+
+    expect(loadSkillConfig()).toMatchObject({
+      recallEnabled: true,
+      recallLimit: 10,
+      recallMinConfidence: 0,
     });
   });
 });

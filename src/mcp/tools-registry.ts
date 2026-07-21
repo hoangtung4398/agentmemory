@@ -3,7 +3,11 @@ export type McpToolDef = {
   description: string;
   inputSchema: {
     type: "object";
-    properties: Record<string, { type: string; description: string }>;
+    properties: Record<string, {
+      type: string;
+      description: string;
+      items?: { type: string };
+    }>;
     required?: string[];
   };
 };
@@ -376,6 +380,21 @@ export const V040_TOOLS: McpToolDef[] = [
         concept: { type: "string", description: "Filter by exact concept" },
         file: { type: "string", description: "Filter by exact file path" },
         limit: { type: "number", description: "Max skill rows (default from AGENTMEMORY_SKILL_DIAGNOSTICS_LIMIT, max 500)" },
+      },
+    },
+  },
+  {
+    name: "memory_skill_recall",
+    description: "Read active AgentSkill advisories without mutating memory state or injecting context.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Exact project scope" },
+        agentId: { type: "string", description: "Exact agent scope" },
+        query: { type: "string", description: "Optional query (maximum 1000 characters)" },
+        files: { type: "array", items: { type: "string" }, description: "Relevant file paths" },
+        concepts: { type: "array", items: { type: "string" }, description: "Relevant concepts" },
+        limit: { type: "number", description: "Max advisories (default from AGENTMEMORY_SKILL_RECALL_LIMIT, 1-10)" },
       },
     },
   },
@@ -1026,8 +1045,8 @@ export function getAllTools(): McpToolDef[] {
 }
 
 // default switched from "core" (8 essential tools) to "all"
-// (full 58-tool surface). README and plugin manifests have always
-// advertised 58 tools "in proxy mode"; the old default left OpenCode /
+// (full 59-tool surface). README and plugin manifests have always
+// advertised 59 tools "in proxy mode"; the old default left OpenCode /
 // Claude Code users seeing 8 with no indication the other tools existed.
 // Users who want the lean essentials can still set AGENTMEMORY_TOOLS=core.
 export function getVisibleTools(): McpToolDef[] {

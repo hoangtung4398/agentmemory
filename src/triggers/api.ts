@@ -31,6 +31,7 @@ import {
   parseSkillPromotionInventoryBoolean,
 } from "../functions/skill-promotion-inventory.js";
 import { isSkillPromotionReasonCode } from "../functions/skill-promotion-policy.js";
+import { normalizeSkillRecallInput } from "../functions/skill-recall.js";
 import {
   isGraphExtractionEnabled,
   isConsolidationEnabled,
@@ -134,6 +135,15 @@ function skillDiagnosticsDisabledResponse(): Response {
     error: "Agent skill diagnostics not enabled",
     flag: "AGENTMEMORY_SKILL_DIAGNOSTICS",
     enableHow: "Set AGENTMEMORY_SKILLS=true. Skill diagnostics are then enabled by default, or set AGENTMEMORY_SKILL_DIAGNOSTICS=true explicitly and restart.",
+    docsHref: "https://github.com/rohitg00/agentmemory/blob/main/docs/skill-layer-design.md",
+  });
+}
+
+function skillRecallDisabledResponse(): Response {
+  return flagDisabledResponse({
+    error: "Agent skill recall not enabled",
+    flag: "AGENTMEMORY_SKILL_RECALL",
+    enableHow: "Set AGENTMEMORY_SKILLS=true and AGENTMEMORY_SKILL_RECALL=true, then restart.",
     docsHref: "https://github.com/rohitg00/agentmemory/blob/main/docs/skill-layer-design.md",
   });
 }
@@ -1818,6 +1828,28 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::skills",
     config: { api_path: "/agentmemory/skills", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::skill-recall",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      if (!loadSkillConfig().recallEnabled) return skillRecallDisabledResponse();
+      const normalized = normalizeSkillRecallInput(req.body);
+      if (!normalized.success) {
+        return { status_code: 400, body: { error: normalized.error } };
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::skill-recall",
+        payload: normalized.input,
+      });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::skill-recall",
+    config: { api_path: "/agentmemory/skills/recall", http_method: "POST" },
   });
 
   sdk.registerFunction("api::skill-promotion-eligibility",
