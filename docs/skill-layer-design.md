@@ -497,17 +497,20 @@ lifecycle check; PR13b does not invent or persist a new status.
 7. **Phase 3B1 - Read-only planner contract hardening: implemented.** It
    returns canonical lowercase SHA-256 evidence hashes and rejects duplicate
    applicable event IDs without writing state.
-8. **Phase 3B2 - Conditional state primitive: future and separately
-   authorized.** The Phase 3B2A audit found the resolved public API unsuitable;
-   a future primitive must be proven before any reducer write.
-9. **Phase 3B3 - Internal counter application: future and separately
-   authorized.** It may proceed only after the reviewed conditional primitive.
+8. **Phase 3B2A - Conditional state capability audit: completed by PR #26.**
+   It concludes **PROVEN_UNSUITABLE** for the resolved public state surface and
+   recommends **ADD_NEW_RUNTIME_PRIMITIVE**. It is documentation only.
+9. **Phase 3B2B - Conditional runtime primitive design: future and separately
+   authorized.** No primitive has been implemented; this design must precede
+   implementation.
+10. **Phase 3B3 - Internal counter application: future and blocked.** It may
+   proceed only after an implemented and proven Phase 3B2 primitive.
    It must introduce and require the separate default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate; the existing Phase 3A
    planner flag alone remains read-only.
-10. **Phase 3B4 - Optional reviewed public surface: future and not implied by
+11. **Phase 3B4 - Optional reviewed public surface: future and not implied by
     prior phases.** Any REST or MCP exposure requires its own authorization.
-11. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+12. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
