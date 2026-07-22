@@ -240,7 +240,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
 
     const result = await plan();
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: true,
       enabled: true,
       applied: false,
@@ -256,6 +256,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
       proposedCounters: { success: 5, failure: 6 },
       sourceEventIds: ["correction", "failure", "success-a", "success-b", "stale"],
     });
+    expect(result.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
     expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
     expect(kv.listCalls).toEqual([KV.skillFeedback]);
     expect(kv.setCalls).toEqual([]);
@@ -281,6 +282,28 @@ describe("mem::skill-feedback-reduction-plan", () => {
       sourceEventIds: ["exact"],
       proposedDelta: { success: 1, failure: 0 },
     });
+  });
+
+  it("fails closed for duplicate applicable event IDs without writing state", async () => {
+    enableReducer();
+    const storedSkill = skill();
+    const rows = [event("duplicate"), event("duplicate")];
+    kv = mockKV(rows, storedSkill);
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+
+    await expect(plan()).resolves.toMatchObject({
+      success: false,
+      enabled: true,
+      applied: false,
+      reason: "duplicate feedback event id",
+      duplicateEventIds: ["duplicate"],
+      applicableCount: 2,
+      sourceEventIds: [],
+    });
+    expect(kv.setCalls).toEqual([]);
+    expect(kv.deleteCalls).toEqual([]);
+    expect(storedSkill.successCount).toBe(3);
+    expect(rows).toHaveLength(2);
   });
 
   it("returns stable failures without writes when either required read fails", async () => {

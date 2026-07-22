@@ -14,6 +14,11 @@ import {
   MAX_SKILL_FEEDBACK_ID_LENGTH,
   MAX_SKILL_FEEDBACK_SCOPE_LENGTH,
 } from "./skill-feedback-model.js";
+import {
+  buildSkillFeedbackReductionEvidence,
+  findDuplicateSkillFeedbackEventIds,
+  sortSkillFeedbackEvents,
+} from "./skill-feedback-reduction-evidence.js";
 
 interface NormalizedReductionPlanInput {
   skillId: string;
@@ -93,19 +98,6 @@ function isValidAgentSkill(value: unknown, skillId: string): value is AgentSkill
     (skill.agentId === undefined || normalizedString(skill.agentId, MAX_SKILL_FEEDBACK_SCOPE_LENGTH) !== undefined);
 }
 
-function compareIdsAscending(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
-
-function sortEvents(events: SkillFeedbackEvent[]): SkillFeedbackEvent[] {
-  return [...events].sort((a, b) => {
-    const timestampDifference = Date.parse(b.createdAt) - Date.parse(a.createdAt);
-    return timestampDifference !== 0 ? timestampDifference : compareIdsAscending(a.id, b.id);
-  });
-}
-
 function appliesToSkill(
   event: SkillFeedbackEvent,
   skill: AgentSkill,
@@ -166,7 +158,25 @@ export function registerSkillFeedbackReductionPlanFunction(sdk: ISdk, kv: StateK
       }
 
       const validEvents = rows.filter((row): row is SkillFeedbackEvent => isValidSkillFeedbackEvent(row));
-      const applicableEvents = sortEvents(validEvents.filter((event) => appliesToSkill(event, skill, input)));
+      const applicableEvents = sortSkillFeedbackEvents(
+        validEvents.filter((event) => appliesToSkill(event, skill, input)),
+      );
+      const duplicateEventIds = findDuplicateSkillFeedbackEventIds(applicableEvents);
+      if (duplicateEventIds.length > 0) {
+        return {
+          ...result(false, true, "duplicate feedback event id"),
+          skillId: skill.id,
+          skillVersion: skill.version,
+          scannedCount: rows.length,
+          validCount: validEvents.length,
+          malformedCount: rows.length - validEvents.length,
+          applicableCount: applicableEvents.length,
+          ignoredCount: validEvents.length - applicableEvents.length,
+          duplicateEventIds,
+        };
+      }
+
+      const evidence = buildSkillFeedbackReductionEvidence(applicableEvents);
       const delta = proposedDelta(applicableEvents);
       const currentCounters = counters(skill.successCount, skill.failureCount);
 
@@ -188,6 +198,7 @@ export function registerSkillFeedbackReductionPlanFunction(sdk: ISdk, kv: StateK
           currentCounters.failure + delta.failure,
         ),
         sourceEventIds: applicableEvents.map((event) => event.id),
+        evidenceHash: evidence.evidenceHash,
       };
     },
   );

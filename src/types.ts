@@ -854,6 +854,8 @@ export interface SkillFeedbackReductionPlanResult {
   currentCounters?: SkillFeedbackReductionPlanCounters;
   proposedCounters?: SkillFeedbackReductionPlanCounters;
   sourceEventIds: string[];
+  evidenceHash?: string;
+  duplicateEventIds?: string[];
   reason?: string;
 }
 
