@@ -247,9 +247,14 @@ Preconditions cover skill ID, skill version, success/failure counters, and
 reduction metadata fingerprint/state. A failed precondition returns conflict;
 rereading/replanning may be offered, but stale writes do not retry automatically.
 
-> Phase 3B write implementation is blocked until source inspection and
-> concurrency tests prove conditional state semantics, or a separately reviewed
-> CAS primitive is added.
+> Phase 3B2A audited the runtime at merge commit
+> `f40a8a32492e8393026f945a07826147c3e999eb`. The currently resolved public
+> state surface is **PROVEN_UNSUITABLE** for this write: `state::update` has
+> atomic mutation operations but no caller-supplied expected state or distinct
+> conflict result. See
+> [`conditional-state-capability-audit.md`](conditional-state-capability-audit.md).
+> Phase 3B write implementation remains blocked pending a separately proven
+> primitive.
 
 Plain `kv.get` followed by `kv.set` is not safe. The in-process lock is not a
 distributed atomicity guarantee.

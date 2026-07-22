@@ -491,13 +491,15 @@ lifecycle check; PR13b does not invent or persist a new status.
    this milestone.** It proposes counter deltas but never applies them.
 6. **Phase 3B Design - Idempotency and atomic application contract:
    documented.** It defines prerequisites only and does not apply counter
-   deltas.
+   deltas. Phase 3B2A capability audit is complete and concludes
+   **PROVEN_UNSUITABLE** for the currently resolved public state surface; no
+   conditional write or reducer application has been implemented.
 7. **Phase 3B1 - Read-only planner contract hardening: implemented.** It
    returns canonical lowercase SHA-256 evidence hashes and rejects duplicate
    applicable event IDs without writing state.
 8. **Phase 3B2 - Conditional state primitive: future and separately
-   authorized.** It must prove conditional state semantics before any reducer
-   write.
+   authorized.** The Phase 3B2A audit found the resolved public API unsuitable;
+   a future primitive must be proven before any reducer write.
 9. **Phase 3B3 - Internal counter application: future and separately
    authorized.** It may proceed only after the reviewed conditional primitive.
    It must introduce and require the separate default-off
