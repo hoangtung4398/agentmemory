@@ -11,7 +11,8 @@ implementation milestone and explicit authorization are required.
 ## 3.2 Existing contracts
 
 - Planner: `mem::skill-feedback-reduction-plan`.
-- Gate: `AGENTMEMORY_SKILL_FEEDBACK_REDUCER`.
+- Gate: `AGENTMEMORY_SKILL_FEEDBACK_REDUCER`, which enables only the
+  read-only planner.
 - Planner path: one `KV.skills` get, one `KV.skillFeedback` list,
   `applied: false`, and zero writes.
 - Counters: `AgentSkill.successCount` and `AgentSkill.failureCount`.
@@ -22,6 +23,37 @@ The current mapping is `success -> success +1`, `failure -> failure +1`,
 `proposedCounters` must not be persisted directly because it is calculated from
 current counters plus the complete applicable evidence set; replay would
 double-count evidence.
+
+### Future apply feature gate
+
+The following is a conceptual, future-only configuration contract:
+
+```text
+AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY=false
+```
+
+This PR does not add the variable to source, configuration, or generated
+references. It defaults to `false`. `AGENTMEMORY_SKILL_FEEDBACK_REDUCER`
+continues to enable only the Phase 3A read-only planning capability, so setting
+`AGENTMEMORY_SKILL_FEEDBACK_REDUCER=true` alone must never authorize counter
+writes.
+
+The future apply function requires all of these flags to be true:
+
+```text
+AGENTMEMORY_SKILLS=true
+AGENTMEMORY_SKILL_FEEDBACK_REDUCER=true
+AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY=true
+```
+
+`AGENTMEMORY_SKILL_FEEDBACK=false` may remain false because historical
+explicit evidence can still be applied. The apply gate does not imply automatic
+invocation, scheduling, hooks, REST, or MCP exposure. Introducing this
+environment variable in code requires separately authorized Phase 3B3 work.
+If the apply gate is false, `mem::skill-feedback-reduction-apply` must return
+before all KV reads and writes, using `skill feedback reducer is disabled`
+unless a separately reviewed future implementation adopts a more specific
+reason.
 
 ## 3.3 Goals
 
@@ -57,17 +89,15 @@ with unknown write outcome. No case uses best-effort counter mutation.
 | Crash after committed write before response | `skill feedback reduction write outcome unknown` | Do not issue a blind second write |
 | New feedback between planning and applying | `stale evidence hash` conflict | No |
 | Requested version differs from current skill version | `skill version conflict` | No |
-| Skill version changes before write | Conflict | No |
-| Counters or reduction metadata change before write | Conflict | No |
+| Skill version, counters, or reduction metadata change before CAS | `skill changed during application` conflict | No |
 | Malformed ledger rows coexist with valid rows | Count and skip malformed rows | Application may continue using valid evidence |
-| Duplicate applicable event IDs | Integrity failure | No |
+| Duplicate applicable event IDs | `duplicate feedback event id` integrity failure | No |
 | Applicable event count decreases | `feedback evidence regression` integrity failure | No |
-| Event count is unchanged but evidence hash changes | Evidence-alteration integrity failure | No |
+| Event count is unchanged but evidence hash changes | `skill reduction state integrity failure` | No |
 | Event count increases and expected hash is current | Recompute absolute target from baseline | One conditional write |
-| Feedback ledger read fails | Read failure | No |
-| Skill read fails | Read failure | No |
-| Conditional write definitively fails before commit | Write failure | No committed change |
-| Conditional write precondition fails | Conflict | No |
+| Feedback ledger or skill read fails | `failed to load skill feedback reduction application` | No |
+| Conditional write definitively fails before commit | `failed to apply skill feedback reduction` | No committed change |
+| Conditional write precondition fails | `skill changed during application` conflict | No |
 | Write times out with unknown commit status | `skill feedback reduction write outcome unknown` | No blind retry |
 
 For an increased event count, a larger count plus a changed full hash is treated
@@ -166,8 +196,12 @@ For example, an event with no project, agent, or session uses this compact form
 (the source arrays retain their stored order):
 
 ```json
-[{"id":"evt-1","skillId":"skill-1","skillVersion":2,"kind":"success","attribution":"direct","source":"user","project":null,"agentId":null,"sessionId":null,"sourceObservationIds":["obs-2","obs-1"],"sourceSessionIds":[],"createdAt":"2026-07-21T00:00:00.000Z"}]
+[{"id":"evt-1","skillId":"skill-1","skillVersion":2,"kind":"success","attribution":"user-confirmed","source":"explicit","project":null,"agentId":null,"sessionId":null,"sourceObservationIds":["obs-2","obs-1"],"sourceSessionIds":[],"createdAt":"2026-07-21T00:00:00.000Z"}]
 ```
+
+Canonical examples and future test vectors must satisfy the current
+`SkillFeedbackEvent` validator and its literal unions before serialization.
+Invalid events are never canonicalized as applicable evidence.
 
 The hash detects appended/altered evidence, kind/scope/version changes, and
 canonicalization order defects. Count or latest timestamp alone is insufficient.
@@ -274,6 +308,14 @@ never reported as a confirmed failure. A retry after that outcome rereads and
 recomputes first; callers must not blindly resubmit a previous replacement
 record.
 
+`stale evidence hash` is a caller-plan conflict: the expected evidence hash
+differs from the recomputed hash. `skill changed during application` is a
+concurrent-state conflict: skill version, counters, or `feedbackReduction`
+metadata changed before CAS, including a failed conditional-write precondition.
+`skill reduction state integrity failure` represents contradictory persisted or
+ledger state, including an unchanged applicable-event count with a different
+full evidence hash. None of these outcomes permits a fallback write.
+
 ## 10. Write sequence contract
 
 The future sequence is gate; validation; process-local lock; read skill; read
@@ -306,8 +348,9 @@ remains authoritative. This design changes no audit code.
 Existing skills without `feedbackReduction` remain valid. The field is optional
 and additive; no startup migration, key-format change, or feedback-shape change
 runs. Historical append-only evidence remains readable. The future apply gate
-is independent of the writer; Phase 3A remains read-only and unchanged while
-the apply gate is disabled.
+is independent of the writer. Phase 3A remains read-only and unchanged while
+the apply gate is disabled, and its planner flag alone never authorizes a
+counter write.
 
 ## 14. Alternatives rejected
 
@@ -320,7 +363,8 @@ mutex cannot protect multiple processes.
 
 1. Phase 3B1: read-only planner-contract hardening.
 2. Phase 3B2: proven conditional state primitive.
-3. Phase 3B3: internal apply implementation.
+3. Phase 3B3: internal apply implementation with the separate, default-off
+   `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate.
 4. Phase 3B4: optional reviewed surface.
 
 Each needs its own design, tests, review, and authorization.
@@ -330,6 +374,9 @@ Each needs its own design, tests, review, and authorization.
 ### Gate and validation
 
 - Disabled gate before any KV read.
+- Planner gate alone does not authorize application.
+- Disabled apply gate returns before any KV read or write.
+- Application requires the skills, planner, and apply gates together.
 - Malformed input before any KV read.
 - Feedback writer disabled while the apply gate is enabled.
 - Missing skill.

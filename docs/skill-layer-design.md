@@ -499,6 +499,9 @@ lifecycle check; PR13b does not invent or persist a new status.
    write.
 9. **Phase 3B3 - Internal counter application: future and separately
    authorized.** It may proceed only after the reviewed conditional primitive.
+   It must introduce and require the separate default-off
+   `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate; the existing Phase 3A
+   planner flag alone remains read-only.
 10. **Phase 3B4 - Optional reviewed public surface: future and not implied by
     prior phases.** Any REST or MCP exposure requires its own authorization.
 11. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
