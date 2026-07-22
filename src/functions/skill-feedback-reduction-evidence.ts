@@ -6,7 +6,7 @@ export interface SkillFeedbackReductionEvidence {
   evidenceHash: string;
 }
 
-export function sortSkillFeedbackEvents(events: SkillFeedbackEvent[]): SkillFeedbackEvent[] {
+export function sortSkillFeedbackEvents(events: readonly SkillFeedbackEvent[]): SkillFeedbackEvent[] {
   return [...events].sort((a, b) => {
     const timestampDifference = Date.parse(b.createdAt) - Date.parse(a.createdAt);
     if (timestampDifference !== 0) return timestampDifference;
@@ -16,7 +16,7 @@ export function sortSkillFeedbackEvents(events: SkillFeedbackEvent[]): SkillFeed
   });
 }
 
-export function findDuplicateSkillFeedbackEventIds(events: SkillFeedbackEvent[]): string[] {
+export function findDuplicateSkillFeedbackEventIds(events: readonly SkillFeedbackEvent[]): string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 
@@ -28,7 +28,7 @@ export function findDuplicateSkillFeedbackEventIds(events: SkillFeedbackEvent[])
   return [...duplicates].sort();
 }
 
-export function canonicalizeSkillFeedbackEvents(events: SkillFeedbackEvent[]): string {
+export function canonicalizeSkillFeedbackEvents(events: readonly SkillFeedbackEvent[]): string {
   return JSON.stringify(events.map((event) => ({
     id: event.id,
     skillId: event.skillId,
@@ -46,7 +46,7 @@ export function canonicalizeSkillFeedbackEvents(events: SkillFeedbackEvent[]): s
 }
 
 export function buildSkillFeedbackReductionEvidence(
-  events: SkillFeedbackEvent[],
+  events: readonly SkillFeedbackEvent[],
 ): SkillFeedbackReductionEvidence {
   const canonicalJson = canonicalizeSkillFeedbackEvents(events);
   return {

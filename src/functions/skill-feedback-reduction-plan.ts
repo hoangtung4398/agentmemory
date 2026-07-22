@@ -47,6 +47,7 @@ function result(
     ignoredCount: 0,
     proposedDelta: counters(),
     sourceEventIds: [],
+    duplicateEventIds: [],
     ...(reason === undefined ? {} : { reason }),
   };
 }
@@ -111,7 +112,7 @@ function appliesToSkill(
     (skill.agentId === undefined || event.agentId === skill.agentId);
 }
 
-function proposedDelta(events: SkillFeedbackEvent[]): SkillFeedbackReductionPlanCounters {
+function proposedDelta(events: readonly SkillFeedbackEvent[]): SkillFeedbackReductionPlanCounters {
   let success = 0;
   let failure = 0;
 
@@ -198,6 +199,7 @@ export function registerSkillFeedbackReductionPlanFunction(sdk: ISdk, kv: StateK
           currentCounters.failure + delta.failure,
         ),
         sourceEventIds: applicableEvents.map((event) => event.id),
+        duplicateEventIds: [],
         evidenceHash: evidence.evidenceHash,
       };
     },
