@@ -361,7 +361,8 @@ mutex cannot protect multiple processes.
 
 ## 15. Future implementation gates
 
-1. Phase 3B1: read-only planner-contract hardening.
+1. Phase 3B1: implemented read-only canonical evidence hashing and duplicate-ID
+   integrity checks in the planner; no state is written.
 2. Phase 3B2: proven conditional state primitive.
 3. Phase 3B3: internal apply implementation with the separate, default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate.

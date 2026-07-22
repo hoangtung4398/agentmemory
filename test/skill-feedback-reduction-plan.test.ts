@@ -148,6 +148,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
       enabled: false,
       applied: false,
       reason: "skill feedback reducer is disabled",
+      duplicateEventIds: [],
     });
     expect(kv.getCalls).toEqual([]);
     expect(kv.listCalls).toEqual([]);
@@ -193,6 +194,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
         success: false,
         enabled: true,
         reason: "invalid skill feedback reduction plan input",
+        duplicateEventIds: [],
       });
     }
     expect(kv.getCalls).toEqual([]);
@@ -204,7 +206,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
   it("stops after the direct skill lookup when the skill is missing or the version differs", async () => {
     enableReducer();
 
-    await expect(plan()).resolves.toMatchObject({ reason: "skill not found" });
+    await expect(plan()).resolves.toMatchObject({ reason: "skill not found", duplicateEventIds: [] });
     expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
     expect(kv.listCalls).toEqual([]);
 
@@ -212,6 +214,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
     registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
     await expect(plan({ skillId: "skill_release", skillVersion: 1 })).resolves.toMatchObject({
       reason: "skill version mismatch",
+      duplicateEventIds: [],
     });
     expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
     expect(kv.listCalls).toEqual([]);
@@ -240,7 +243,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
 
     const result = await plan();
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: true,
       enabled: true,
       applied: false,
@@ -255,7 +258,9 @@ describe("mem::skill-feedback-reduction-plan", () => {
       currentCounters: { success: 3, failure: 4 },
       proposedCounters: { success: 5, failure: 6 },
       sourceEventIds: ["correction", "failure", "success-a", "success-b", "stale"],
+      duplicateEventIds: [],
     });
+    expect(result.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
     expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
     expect(kv.listCalls).toEqual([KV.skillFeedback]);
     expect(kv.setCalls).toEqual([]);
@@ -283,12 +288,51 @@ describe("mem::skill-feedback-reduction-plan", () => {
     });
   });
 
+  it("fails closed for duplicate applicable event IDs without writing state", async () => {
+    enableReducer();
+    const storedSkill = skill();
+    const rows = [event("duplicate"), event("duplicate")];
+    kv = mockKV(rows, storedSkill);
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+
+    const beforeSkill = JSON.stringify(storedSkill);
+    const beforeRows = JSON.stringify(rows);
+    const result = await plan();
+
+    expect(result).toMatchObject({
+      success: false,
+      enabled: true,
+      applied: false,
+      reason: "duplicate feedback event id",
+      skillId: "skill_release",
+      skillVersion: 2,
+      scannedCount: 2,
+      validCount: 2,
+      malformedCount: 0,
+      duplicateEventIds: ["duplicate"],
+      applicableCount: 2,
+      ignoredCount: 0,
+      proposedDelta: { success: 0, failure: 0 },
+      sourceEventIds: [],
+    });
+    expect("evidenceHash" in result).toBe(false);
+    expect("currentCounters" in result).toBe(false);
+    expect("proposedCounters" in result).toBe(false);
+    expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
+    expect(kv.listCalls).toEqual([KV.skillFeedback]);
+    expect(kv.setCalls).toEqual([]);
+    expect(kv.deleteCalls).toEqual([]);
+    expect(JSON.stringify(storedSkill)).toBe(beforeSkill);
+    expect(JSON.stringify(rows)).toBe(beforeRows);
+  });
+
   it("returns stable failures without writes when either required read fails", async () => {
     enableReducer();
     kv.failGet();
     await expect(plan()).resolves.toMatchObject({
       success: false,
       reason: "failed to load skill feedback reduction plan",
+      duplicateEventIds: [],
     });
     expect(kv.listCalls).toEqual([]);
 
@@ -298,6 +342,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
     await expect(plan()).resolves.toMatchObject({
       success: false,
       reason: "failed to load skill feedback reduction plan",
+      duplicateEventIds: [],
     });
     expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
     expect(kv.listCalls).toEqual([KV.skillFeedback]);
@@ -314,6 +359,7 @@ describe("mem::skill-feedback-reduction-plan", () => {
 
     const result = await plan();
     result.sourceEventIds.push("changed");
+    result.duplicateEventIds.push("changed");
     result.proposedDelta.success = 99;
     result.currentCounters!.success = 99;
     result.proposedCounters!.failure = 99;
@@ -322,5 +368,88 @@ describe("mem::skill-feedback-reduction-plan", () => {
     expect(storedSkill.failureCount).toBe(4);
     expect(rows[0]!.id).toBe("feedback-1");
     expect(rows[0]!.sourceObservationIds).toEqual([]);
+  });
+
+  it("returns the approved exact evidence hash for the canonical event vector", async () => {
+    enableReducer();
+    kv = mockKV([
+      event("evt-1", {
+        skillId: "skill-1",
+        project: undefined,
+        agentId: undefined,
+        sourceObservationIds: ["obs-2", "obs-1"],
+      }),
+    ], skill({ id: "skill-1", project: undefined, agentId: undefined }));
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+
+    await expect(plan({ skillId: "skill-1" })).resolves.toMatchObject({
+      applicableCount: 1,
+      duplicateEventIds: [],
+      evidenceHash: "60594b2e3280f6f3e151a39c45c4cd229177d99886469bf0466fc0036ed1680c",
+    });
+  });
+
+  it("hashes empty applicable evidence deterministically", async () => {
+    enableReducer();
+    kv = mockKV([event("old-version", { skillVersion: 1 })], skill());
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+
+    const result = await plan();
+
+    expect(result).toMatchObject({
+      applicableCount: 0,
+      proposedDelta: { success: 0, failure: 0 },
+      currentCounters: { success: 3, failure: 4 },
+      proposedCounters: { success: 3, failure: 4 },
+      sourceEventIds: [],
+      duplicateEventIds: [],
+      evidenceHash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    });
+  });
+
+  it("keeps the hash and canonical source IDs stable across ledger insertion order and ignored evidence", async () => {
+    enableReducer();
+    const applicable = [
+      event("later", { createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("earlier", { createdAt: "2026-07-21T00:00:00.000Z" }),
+    ];
+    const ignored = [
+      {},
+      event("old", { skillVersion: 1 }),
+      event("other", { skillId: "other-skill" }),
+      event("other-project", { project: "other-project" }),
+      event("other-agent", { agentId: "other-agent" }),
+    ];
+    kv = mockKV([...applicable, ...ignored], skill());
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+    const first = await plan();
+
+    kv = mockKV([...ignored, ...[...applicable].reverse()], skill());
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+    const second = await plan();
+
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+    expect(first.sourceEventIds).toEqual(["later", "earlier"]);
+    expect(second.sourceEventIds).toEqual(["later", "earlier"]);
+    expect(first.duplicateEventIds).toEqual([]);
+    expect(second.duplicateEventIds).toEqual([]);
+  });
+
+  it.each([
+    ["old-version", [event("duplicate", { skillVersion: 1 }), event("duplicate", { skillVersion: 1 })]],
+    ["other skill", [event("duplicate", { skillId: "other-skill" }), event("duplicate", { skillId: "other-skill" })]],
+    ["other project", [event("duplicate", { project: "other-project" }), event("duplicate", { project: "other-project" })]],
+    ["other agent", [event("duplicate", { agentId: "other-agent" }), event("duplicate", { agentId: "other-agent" })]],
+  ])("does not fail for duplicate IDs in ignored %s evidence", async (_name, rows) => {
+    enableReducer();
+    kv = mockKV(rows, skill());
+    registerSkillFeedbackReductionPlanFunction(sdk as never, kv as never);
+
+    await expect(plan()).resolves.toMatchObject({
+      success: true,
+      applicableCount: 0,
+      duplicateEventIds: [],
+      evidenceHash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    });
   });
 });

@@ -492,8 +492,9 @@ lifecycle check; PR13b does not invent or persist a new status.
 6. **Phase 3B Design - Idempotency and atomic application contract:
    documented.** It defines prerequisites only and does not apply counter
    deltas.
-7. **Phase 3B1 - Read-only planner contract hardening: future and separately
-   authorized.** It remains zero-write.
+7. **Phase 3B1 - Read-only planner contract hardening: implemented.** It
+   returns canonical lowercase SHA-256 evidence hashes and rejects duplicate
+   applicable event IDs without writing state.
 8. **Phase 3B2 - Conditional state primitive: future and separately
    authorized.** It must prove conditional state semantics before any reducer
    write.
