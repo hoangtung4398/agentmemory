@@ -500,17 +500,23 @@ lifecycle check; PR13b does not invent or persist a new status.
 8. **Phase 3B2A - Conditional state capability audit: completed by PR #26.**
    It concludes **PROVEN_UNSUITABLE** for the resolved public state surface and
    recommends **ADD_NEW_RUNTIME_PRIMITIVE**. It is documentation only.
-9. **Phase 3B2B - Conditional runtime primitive design: future and separately
-   authorized.** No primitive has been implemented; this design must precede
-   implementation.
-10. **Phase 3B3 - Internal counter application: future and blocked.** It may
-   proceed only after an implemented and proven Phase 3B2 primitive.
+9. **Phase 3B2B - Conditional runtime primitive contract: designed by this
+   milestone.** It is documentation only; no primitive exists, is implemented,
+   or is proven available.
+10. **Phase 3B2C - Runtime/SDK primitive implementation and authoritative
+    proof: future and separately authorized.** It must implement and prove the
+    contract before AgentMemory adoption is considered.
+11. **Phase 3B2D - AgentMemory `StateKV` adoption and capability/integration
+    proof: future and separately authorized.** It follows, rather than replaces,
+    the runtime/SDK proof.
+12. **Phase 3B3 - Internal counter application: future and blocked.** It may
+   proceed only after Phase 3B2C and Phase 3B2D are complete.
    It must introduce and require the separate default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate; the existing Phase 3A
    planner flag alone remains read-only.
-11. **Phase 3B4 - Optional reviewed public surface: future and not implied by
+13. **Phase 3B4 - Optional reviewed public surface: future and not implied by
     prior phases.** Any REST or MCP exposure requires its own authorization.
-12. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+14. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
