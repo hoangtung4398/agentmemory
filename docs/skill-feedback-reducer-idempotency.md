@@ -247,9 +247,26 @@ Preconditions cover skill ID, skill version, success/failure counters, and
 reduction metadata fingerprint/state. A failed precondition returns conflict;
 rereading/replanning may be offered, but stale writes do not retry automatically.
 
-> Phase 3B write implementation is blocked until source inspection and
-> concurrency tests prove conditional state semantics, or a separately reviewed
-> CAS primitive is added.
+> Phase 3B2A audited the runtime at merge commit
+> `f40a8a32492e8393026f945a07826147c3e999eb`. The currently resolved public
+> state surface is **PROVEN_UNSUITABLE** for this write: `state::update` has
+> atomic mutation operations but no caller-supplied expected state or distinct
+> conflict result. See
+> [`conditional-state-capability-audit.md`](conditional-state-capability-audit.md).
+> Phase 3B write implementation remains blocked pending a separately proven
+> primitive.
+
+### Phase 3B2A status
+
+Primary conclusion: **PROVEN_UNSUITABLE**.
+
+Phase 3B2B recommendation: **ADD_NEW_RUNTIME_PRIMITIVE**.
+
+No primitive was implemented. The existing public `state::update` surface must
+not be adapted as CAS: its atomic ordered mutation list has no caller-supplied
+expected state or distinct precondition conflict. Phase 3B3 remains blocked;
+a separately reviewed Phase 3B2B design is required before any reducer
+application is considered.
 
 Plain `kv.get` followed by `kv.set` is not safe. The in-process lock is not a
 distributed atomicity guarantee.
@@ -363,10 +380,13 @@ mutex cannot protect multiple processes.
 
 1. Phase 3B1: implemented read-only canonical evidence hashing and duplicate-ID
    integrity checks in the planner; no state is written.
-2. Phase 3B2: proven conditional state primitive.
-3. Phase 3B3: internal apply implementation with the separate, default-off
+2. Phase 3B2A: completed conditional state capability audit; the current public
+   surface is PROVEN_UNSUITABLE and recommends ADD_NEW_RUNTIME_PRIMITIVE.
+3. Phase 3B2B: separately reviewed conditional runtime primitive design and
+   implementation.
+4. Phase 3B3: internal apply implementation with the separate, default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate.
-4. Phase 3B4: optional reviewed surface.
+5. Phase 3B4: optional reviewed surface.
 
 Each needs its own design, tests, review, and authorization.
 
