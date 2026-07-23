@@ -240,12 +240,13 @@ Production application requires a conditional single-key operation equivalent
 to:
 
 ```ts
-compareAndSet(KV.skills, skillId, expectedRevisionOrFingerprint, replacementSkill)
+compareAndSet(KV.skills, skillId, expectedSkill, replacementSkill)
 ```
 
-Preconditions cover skill ID, skill version, success/failure counters, and
-reduction metadata fingerprint/state. A failed precondition returns conflict;
-rereading/replanning may be offered, but stale writes do not retry automatically.
+The precondition compares the complete persisted `AgentSkill`, not a subset of
+skill ID, version, counters, or reduction metadata. A failed precondition
+returns conflict; rereading/replanning may be offered, but stale writes do not
+retry automatically.
 
 > Phase 3B2A audited the runtime at merge commit
 > `f40a8a32492e8393026f945a07826147c3e999eb`. The currently resolved public
@@ -255,6 +256,21 @@ rereading/replanning may be offered, but stale writes do not retry automatically
 > [`conditional-state-capability-audit.md`](conditional-state-capability-audit.md).
 > Phase 3B write implementation remains blocked pending a separately proven
 > primitive.
+
+### Phase 3B2B Conditional Primitive Design Status
+
+Phase 3B2B designs, but does not implement or prove, the conceptual future
+`state::compare-and-set` function. Its future public contract compares complete
+expected and replacement persisted values for one key, then replaces the record
+only on full structural equality. A complete `AgentSkill` comparison prevents
+lost updates to unrelated fields without selecting a revision or an
+`AgentSkill` schema field.
+
+The future primitive maps `conflict` and `not_found` after the initial skill
+read to `skill changed during application`, and maps an unknown invocation
+outcome to `skill feedback reduction write outcome unknown`. It has no fallback
+to get+set or existing update. See
+[`conditional-state-primitive-contract.md`](conditional-state-primitive-contract.md).
 
 ### Phase 3B2A status
 
@@ -382,11 +398,15 @@ mutex cannot protect multiple processes.
    integrity checks in the planner; no state is written.
 2. Phase 3B2A: completed conditional state capability audit; the current public
    surface is PROVEN_UNSUITABLE and recommends ADD_NEW_RUNTIME_PRIMITIVE.
-3. Phase 3B2B: separately reviewed conditional runtime primitive design and
-   implementation.
-4. Phase 3B3: internal apply implementation with the separate, default-off
+3. Phase 3B2B: conditional runtime primitive contract designed by this
+   documentation milestone; no primitive is implemented or proven.
+4. Phase 3B2C: upstream/runtime and SDK implementation plus authoritative
+   backend proof, future and separately authorized.
+5. Phase 3B2D: AgentMemory `StateKV` adapter adoption, capability detection,
+   and isolated integration proof, future and separately authorized.
+6. Phase 3B3: internal apply implementation with the separate, default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate.
-5. Phase 3B4: optional reviewed surface.
+7. Phase 3B4: optional public surface, future and separately authorized.
 
 Each needs its own design, tests, review, and authorization.
 

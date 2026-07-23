@@ -180,6 +180,19 @@ reveal another supported primitive, but the audited `state::update` contract
 remains unsuitable. Phase 3B2B must design a new or newly exposed runtime
 primitive before implementation is considered.
 
+## Post-Audit Design Status
+
+PR #26 remains the completed Phase 3B2A capability audit. Its conclusion
+remains **PROVEN_UNSUITABLE** and its recommendation remains
+**ADD_NEW_RUNTIME_PRIMITIVE**. Phase 3B2B now designs a full-record conditional
+replacement contract in
+[`conditional-state-primitive-contract.md`](conditional-state-primitive-contract.md).
+
+The primitive is designed only: it has not been implemented or proven, and no
+current runtime availability is claimed. Backend multi-worker, durability, and
+timeout unknowns recorded by this audit remain unknown. Phase 3B3 reducer
+application remains blocked.
+
 ## Prohibited Assumptions
 
 Future work must not infer CAS from a function name, remote execution, atomic
