@@ -15,10 +15,11 @@ AgentMemory adapter proof are separately authorized and completed.
 Phase 3B2C0 has now inspected the upstream ownership boundary and selected
 **`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`**. iii-hq/iii owns runtime correctness,
 the state-worker/adapters, SDK request/result types, and released artifacts;
-AgentMemory must not implement or emulate this guarantee. The pinned target is
-currently the `iii/v0.11.2` source line and corresponding `iii-sdk@0.11.2` /
-`iiidev/iii:0.11.2` references, but no target line is approved for primitive
-implementation. See
+AgentMemory must not implement or emulate this guarantee. The currently
+consumed downstream baseline is the `iii/v0.11.2` source line together with the
+corresponding `iii-sdk@0.11.2` and `iiidev/iii:0.11.2` references. The fixed
+newer source is a comparison snapshot, not an implementation target. No
+implementation target line is approved for the primitive. See
 [`conditional-state-upstream-ownership.md`](conditional-state-upstream-ownership.md).
 
 ## 2. Decision summary

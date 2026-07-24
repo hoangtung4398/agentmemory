@@ -1,6 +1,6 @@
 # Conditional State Upstream Ownership Audit
 
-## Status and authorization boundary
+## 1. Status and authorization boundary
 
 **Primary decision: `BLOCKED_PENDING_UPSTREAM_ALIGNMENT`.** This Phase 3B2C0
 audit is documentation plus read-only inspection of `iii-hq/iii`. It does not
@@ -16,7 +16,7 @@ published; and **consumable** means AgentMemory can safely use that released
 capability. Only the first two apply to the future primitive today. It is not
 implemented, tested, proven, released, or consumable.
 
-## Downstream and upstream repositories
+## 2. Downstream and upstream repositories
 
 | Repository | Role | Authority |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ implemented, tested, proven, released, or consumable.
 AgentMemory cannot implement, emulate, or prove the upstream correctness
 property with a local lock, `get` plus `set`, or `state::update`.
 
-## Immutable source references
+## 3. Immutable source references
 
 | Purpose | Immutable reference | Meaning |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ The tag object is `6f63c9c1517d996eb68577a7f127ab950fc83a82` and peels to
 the release source commit above. The release ref and current snapshot were
 both inspected read-only.
 
-## Distributed artifact mapping
+## 4. Distributed artifact mapping
 
 | Consumer reference or artifact | Source relationship | Audit status | Boundary |
 | --- | --- | --- | --- |
@@ -48,7 +48,7 @@ both inspected read-only.
 | `iiidev/iii:0.11.2` image | Release workflow names `iiidev/iii`, and registry manifest resolves to digest `sha256:4d032e1df5d6a4dc2080a94dd11dd87411de5dccb46bd563b557de9ba3c20894` | Partially proven | Tag is available; matching version alone does not prove the image was built from the inspected tag. |
 | `iii/v0.11.2` GitHub release source | Peeled tag resolves to `2b445957...`; GitHub release exists | Proven | Source and binary-release artifact availability do not establish future CAS support. |
 
-## State-worker source inventory
+## 5. State-worker source inventory
 
 The release state worker owns function registration and dispatch. Its inspected
 inventory is below; blob IDs make the source evidence reproducible.
@@ -67,7 +67,7 @@ Both references retain the same state function family and neither inspected
 public input/result surface contains `expected_value`, an explicit conditional
 operation, or an `applied`/`conflict`/`not_found` normal result union.
 
-## Adapter ownership and capabilities
+## 6. Adapter ownership and capabilities
 
 At `iii/v0.11.2`, `StateAdapter` defines `set`, `get`, `delete`, `update`,
 `list`, `list_groups`, and `destroy`. The module declares exactly the three
@@ -85,7 +85,7 @@ upstream change may instead propose `UNSUPPORTED_ADAPTERS_FAIL_CAPABILITY_DISCOV
 but that would require an explicit, reviewed capability contract and does not
 exist today.
 
-## SDK ownership and public surface
+## 7. SDK ownership and public surface
 
 The upstream Rust SDK owns wire types used by the engine; its release
 `sdk/packages/rust/iii/src/types.rs` blob is
@@ -101,7 +101,7 @@ Any future primitive therefore needs coordinated engine deserialization,
 adapter trait, Rust types, Node types/client behavior, and release work in
 `iii-hq/iii`.
 
-## Release and CI ownership
+## 8. Release and CI ownership
 
 Release source has monorepo build/test scripts in root `package.json`, including
 `build:engine`, `test:engine`, `test:sdk-node`, `test:sdk-rust`, Rust workspace
@@ -115,7 +115,7 @@ images, and publishes `iiidev/iii:<version>`. Those secret-bound publish steps
 are upstream release-owner responsibilities; their existence is not permission
 or proof that a new backport can be released.
 
-## Contribution and licensing boundary
+## 9. Contribution and licensing boundary
 
 `CONTRIBUTING.md` asks contributors to discuss larger features in an issue,
 fork the repository, submit a focused PR against `main`, include applicable
@@ -128,7 +128,7 @@ release publication; an **external contributor** may prepare a reviewed PR;
 an **AgentMemory maintainer** owns only downstream compatibility analysis and
 later adapter/reducer integration. This audit performs none of those actions.
 
-## Release-line versus current-main comparison
+## 10. Release-line versus current-main comparison
 
 The comparison is bounded to the fixed snapshots. The release uses `iii-sdk`
 and engine version `0.11.2`; the comparison snapshot declares `0.22.0` for
@@ -142,7 +142,7 @@ state input structs, and Node `IState` surface still do not contain the designed
 conditional operation. Current main is therefore neither a proven upgrade path
 nor evidence that the 0.11 line can receive a backport.
 
-## Ownership matrix
+## 11. Ownership matrix
 
 | Concern | Owning repo | Owning path | 0.11.2 status | Current status | Future owner |
 | --- | --- | --- | --- | --- | --- |
@@ -159,7 +159,7 @@ nor evidence that the 0.11 line can receive a backport.
 | AgentMemory `StateKV` | `hoangtung4398/agentmemory` | `src/state/kv.ts` | Downstream, blocked | Downstream, blocked | AgentMemory maintainer after upstream proof |
 | AgentMemory reducer | `hoangtung4398/agentmemory` | future reducer gate only | Downstream, blocked | Downstream, blocked | AgentMemory maintainer after 3B2D |
 
-## Version-line matrix
+## 12. Version-line matrix
 
 The only allowed cells in this matrix are `Proven`, `Absent`, `Unknown`, and
 `Not applicable`.
@@ -177,7 +177,7 @@ The only allowed cells in this matrix are `Proven`, `Absent`, `Unknown`, and
 | Migration | Not applicable | Unknown | No approved upgrade plan exists. |
 | Maintainer alignment | Unknown | Unknown | No upstream discussion, acceptance, or release commitment was requested. |
 
-## Authoritative backend proof options
+## 13. Authoritative backend proof options
 
 Future upstream work must prove one authoritative same-key linearization path
 for every shipped adapter selected by the policy. At minimum it must cover
@@ -190,7 +190,7 @@ authoritative boundaries, while bridge delegates to another state worker. A
 mock, local SDK equality check, process-local mutex, or a get-plus-set sequence
 cannot supply that proof.
 
-## Contribution path
+## 14. Contribution path
 
 Before an upstream implementation, a maintainer-aligned issue or discussion
 must establish target version line, adapter support policy, public wire result,
@@ -203,7 +203,7 @@ maintainer review and release publication.
 This is a future process description, not an instruction to open an issue or
 perform upstream work now.
 
-## Primary version-line decision
+## 15. Primary version-line decision
 
 **`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`** is selected.
 
@@ -212,7 +212,7 @@ perform upstream work now.
 is not selected because the fixed current snapshot also lacks the primitive and
 AgentMemory's compatibility/refactor path is not proven.
 
-## Decision rationale
+## 16. Decision rationale
 
 The 0.11.2 state worker, adapters, and Node/Rust SDK types establish that the
 required primitive is absent. The current snapshot retains that absence while
@@ -221,10 +221,15 @@ showing a substantial version-line and runtime/SDK evolution. Although the
 does not prove a supported backport route, release authority, or all-adapter
 correctness proof.
 
-Blocking is therefore a concrete decision: do not begin 3B2C1, 3B2C2, 3B2C3,
-3B2D, or 3B3 until upstream maintainers align on an implementation/release path.
+`BLOCKED_PENDING_UPSTREAM_ALIGNMENT` blocks implementation and downstream
+adoption decisions; it does not make alignment logically impossible. Phase
+3B2C1 is the separately authorized upstream-alignment milestone. No 3B2C2
+implementation, 3B2C3 proof/release work, 3B2D downstream adoption, or 3B3
+reducer work may begin until 3B2C1 records maintainer-approved target-line,
+adapter-policy, contribution, acceptance, and release decisions. This PR does
+not authorize 3B2C1 itself.
 
-## Required upstream deliverables
+## 17. Required upstream deliverables
 
 1. Maintainer-approved target line and contribution/release plan.
 2. Runtime registration, request/result deserialization, and `StateAdapter`
@@ -234,7 +239,7 @@ Blocking is therefore a concrete decision: do not begin 3B2C1, 3B2C2, 3B2C3,
 5. Authoritative backend concurrency, failure, and compatibility tests.
 6. Released engine and SDK artifacts with verifiable source/artifact provenance.
 
-## Required downstream deliverables
+## 18. Required downstream deliverables
 
 1. A separately authorized 3B2D `StateKV.compareAndSet` adapter.
 2. Explicit capability/pinned-version handling that fails closed, never
@@ -244,22 +249,25 @@ Blocking is therefore a concrete decision: do not begin 3B2C1, 3B2C2, 3B2C3,
 4. Only after that proof, separately authorized reducer work behind its
    default-off gate.
 
-## Future phase split
+## 19. Future phase split
 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 3B2C0 | This ownership/version-line audit | Designed and inspected documentation only |
-| 3B2C1 | Upstream alignment and implementation-plan approval | Future |
+| 3B2C1 | Separately authorized upstream alignment and implementation-plan approval | Future |
 | 3B2C2 | Runtime and SDK implementation in an authorized iii target line | Future |
 | 3B2C3 | Authoritative proof and released artifact/provenance evidence | Future |
 | 3B2D | AgentMemory adapter, capability/pinning, and integration | Future |
 | 3B3 | Internal reducer application | Blocked until 3B2C3 and 3B2D are complete |
 
-If a later upstream decision selects a backport, 3B2C1 still requires
-maintainer and release alignment. If it selects an upgrade, a separate
-AgentMemory runtime-upgrade prerequisite precedes 3B2D.
+The next possible milestone after this audit is reviewed and merged is 3B2C1,
+subject to separate explicit authorization. It is where alignment can occur;
+it is not a prerequisite that must already be complete. If its outcome later
+selects a backport, maintainer and release alignment remains part of that
+outcome. If it selects an upgrade, a separate AgentMemory runtime-upgrade
+prerequisite precedes 3B2D.
 
-## Prohibited assumptions
+## 20. Prohibited assumptions
 
 - A matching Docker or npm version proves source provenance or conditional support.
 - Existing atomic update semantics are compare-and-set semantics.
@@ -271,7 +279,7 @@ AgentMemory runtime-upgrade prerequisite precedes 3B2D.
 - Any upstream fork, issue, pull request, push, build, release, or publication
   is authorized by this documentation audit.
 
-## Evidence appendix
+## 21. Evidence appendix
 
 Read-only evidence collected for this audit:
 
