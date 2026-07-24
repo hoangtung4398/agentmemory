@@ -272,6 +272,20 @@ outcome to `skill feedback reduction write outcome unknown`. It has no fallback
 to get+set or existing update. See
 [`conditional-state-primitive-contract.md`](conditional-state-primitive-contract.md).
 
+### Phase 3B2C0 Upstream Ownership Status
+
+Phase 3B2C0 inspected the pinned upstream release source and a fixed current
+comparison snapshot, then selected **`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`**.
+The runtime/SDK conditional primitive is upstream-owned by `iii-hq/iii`;
+AgentMemory has no zero-write fallback to get+set or `state::update` and must
+not emulate the guarantee. No primitive, capability detection, `StateKV`
+adapter, reducer gate, or counter application was implemented.
+
+Phase 3B3 remains blocked pending 3B2C1 upstream alignment, 3B2C2 runtime/SDK
+implementation, 3B2C3 authoritative proof and released artifacts, and 3B2D
+downstream adapter/integration proof. See
+[`conditional-state-upstream-ownership.md`](conditional-state-upstream-ownership.md).
+
 ### Phase 3B2A status
 
 Primary conclusion: **PROVEN_UNSUITABLE**.
@@ -400,13 +414,18 @@ mutex cannot protect multiple processes.
    surface is PROVEN_UNSUITABLE and recommends ADD_NEW_RUNTIME_PRIMITIVE.
 3. Phase 3B2B: conditional runtime primitive contract designed by this
    documentation milestone; no primitive is implemented or proven.
-4. Phase 3B2C: upstream/runtime and SDK implementation plus authoritative
-   backend proof, future and separately authorized.
-5. Phase 3B2D: AgentMemory `StateKV` adapter adoption, capability detection,
+4. Phase 3B2C0: upstream ownership/version-line audit, documentation-only;
+   it selects `BLOCKED_PENDING_UPSTREAM_ALIGNMENT`.
+5. Phase 3B2C1: upstream alignment and implementation-plan approval, future.
+6. Phase 3B2C2: runtime/SDK implementation in an authorized target line,
+   future.
+7. Phase 3B2C3: authoritative backend proof plus released artifacts and
+   provenance evidence, future.
+8. Phase 3B2D: AgentMemory `StateKV` adapter adoption, capability detection,
    and isolated integration proof, future and separately authorized.
-6. Phase 3B3: internal apply implementation with the separate, default-off
+9. Phase 3B3: internal apply implementation with the separate, default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate.
-7. Phase 3B4: optional public surface, future and separately authorized.
+10. Phase 3B4: optional public surface, future and separately authorized.
 
 Each needs its own design, tests, review, and authorization.
 

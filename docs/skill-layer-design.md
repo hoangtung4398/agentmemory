@@ -503,21 +503,29 @@ lifecycle check; PR13b does not invent or persist a new status.
 9. **Phase 3B2B - Conditional runtime primitive contract: designed by this
    milestone.** It is documentation only; no primitive exists, is implemented,
    or is proven available.
-10. **Phase 3B2C - Runtime/SDK primitive implementation and authoritative
-    proof: future and separately authorized.** It must implement and prove the
-    contract before AgentMemory adoption is considered.
-11. **Phase 3B2D - AgentMemory `StateKV` adoption and capability/integration
+10. **Phase 3B2C0 - Upstream ownership and version-line audit: inspected and
+    documentation-only.** It selects **`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`**:
+    iii-hq/iii owns the primitive, no maintained 0.11 backport line or current
+    upgrade path has been proven, and no runtime/SDK work is authorized.
+11. **Phase 3B2C1 - Upstream alignment and implementation-plan approval:
+    future.** It precedes any implementation.
+12. **Phase 3B2C2 - Runtime/SDK primitive implementation: future and
+    separately authorized.** It must occur in a maintainer-approved upstream
+    target line.
+13. **Phase 3B2C3 - Authoritative proof and release artifacts: future.** It
+    must prove the contract and artifact provenance before AgentMemory adoption.
+14. **Phase 3B2D - AgentMemory `StateKV` adoption and capability/integration
     proof: future and separately authorized.** It follows, rather than replaces,
     the runtime/SDK proof.
-12. **Phase 3B3 - Internal counter application: future and blocked.** It may
-   proceed only after Phase 3B2C and Phase 3B2D are complete.
+15. **Phase 3B3 - Internal counter application: future and blocked.** It may
+   proceed only after Phase 3B2C3 and Phase 3B2D are complete.
    It must introduce and require the separate default-off
    `AGENTMEMORY_SKILL_FEEDBACK_REDUCER_APPLY` gate; the existing Phase 3A
    planner flag alone remains read-only.
-13. **Phase 3B4 - Optional reviewed public surface: future and not implied by
+16. **Phase 3B4 - Optional reviewed public surface: future and not implied by
     prior phases.** Any REST or MCP exposure requires its own authorization.
-14. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
-   changes remain explicit and auditable.
+17. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+    changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
