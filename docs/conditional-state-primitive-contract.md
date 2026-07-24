@@ -3,13 +3,24 @@
 ## 1. Status and authorization boundary
 
 **Status: designed only.** This Phase 3B2B document defines a proposed future
-conditional single-key state primitive. It is not implemented, proven, or
-available in the current iii-engine image, `iii-sdk@0.11.2`, or AgentMemory.
+conditional single-key state primitive. It is not implemented, tested, proven,
+released, or consumable in the current iii-engine image, `iii-sdk@0.11.2`, or
+AgentMemory.
 
 This documentation milestone authorizes no runtime function, SDK type,
 `StateKV` method, reducer write, schema change, capability probe, or state
 mutation. Phase 3B3 remains blocked until later runtime/SDK implementation and
 AgentMemory adapter proof are separately authorized and completed.
+
+Phase 3B2C0 has now inspected the upstream ownership boundary and selected
+**`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`**. iii-hq/iii owns runtime correctness,
+the state-worker/adapters, SDK request/result types, and released artifacts;
+AgentMemory must not implement or emulate this guarantee. The currently
+consumed downstream baseline is the `iii/v0.11.2` source line together with the
+corresponding `iii-sdk@0.11.2` and `iiidev/iii:0.11.2` references. The fixed
+newer source is a comparison snapshot, not an implementation target. No
+implementation target line is approved for the primitive. See
+[`conditional-state-upstream-ownership.md`](conditional-state-upstream-ownership.md).
 
 ## 2. Decision summary
 
@@ -300,12 +311,18 @@ API registration.
 ## 25. Future phase gates
 
 - **Phase 3B2B:** this conditional runtime primitive contract design.
-- **Phase 3B2C:** future upstream/runtime and SDK implementation with
-  authoritative backend proof, separately authorized.
+- **Phase 3B2C0:** upstream ownership and version-line audit, inspected and
+  documentation-only; it selects `BLOCKED_PENDING_UPSTREAM_ALIGNMENT`.
+- **Phase 3B2C1:** future upstream alignment and implementation-plan approval.
+- **Phase 3B2C2:** future runtime/SDK implementation in an authorized upstream
+  target line.
+- **Phase 3B2C3:** future authoritative backend proof and released artifact /
+  provenance evidence.
 - **Phase 3B2D:** future AgentMemory `StateKV` adoption, capability detection,
-  and isolated integration proof, separately authorized.
-- **Phase 3B3:** future internal reducer application, blocked until 3B2C and
-  3B2D are implemented, reviewed, and proven.
+  pinning, and isolated integration proof, separately authorized.
+- **Phase 3B3:** future internal reducer application, blocked until 3B2C3 and
+  3B2D are implemented, reviewed, proven, released where required, and
+  consumable by AgentMemory.
 
 ## 26. Prohibited assumptions
 
