@@ -238,7 +238,7 @@ Latest release notes: [CHANGELOG.md](CHANGELOG.md). Decision Engine rollout
 defaults and diagnostics: [docs/decision-engine-milestone.md](docs/decision-engine-milestone.md).
 Future Skill / Self-Improvement Layer design: [docs/skill-layer-design.md](docs/skill-layer-design.md).
 
-AgentSkill recall remains opt-in. Set `AGENTMEMORY_SKILLS=true`, `AGENTMEMORY_SKILL_RECALL=true`, and `AGENTMEMORY_SKILL_CONTEXT=true` to append a separately budgeted, advisory-only checklist section to `mem::context`. It does not execute commands or record usage/success; hook delivery still requires `AGENTMEMORY_INJECT_CONTEXT=true`. Explicit feedback is separately gated by `AGENTMEMORY_SKILL_FEEDBACK=true` and is available only through the internal writer; it appends evidence without changing a skill's counters, confidence, strength, status, or lifecycle. Internal ledger diagnostics are separately gated by `AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS=true`; they can inspect historical feedback while recording stays disabled and never write or recommend changes.
+AgentSkill recall remains opt-in. Set `AGENTMEMORY_SKILLS=true`, `AGENTMEMORY_SKILL_RECALL=true`, and `AGENTMEMORY_SKILL_CONTEXT=true` to append a separately budgeted, advisory-only checklist section to `mem::context`. It does not execute commands or record usage/success; hook delivery still requires `AGENTMEMORY_INJECT_CONTEXT=true`. Explicit feedback is separately gated by `AGENTMEMORY_SKILL_FEEDBACK=true` and is available only through the internal writer; it appends evidence without changing a skill's counters, confidence, strength, status, or lifecycle. Internal ledger diagnostics are separately gated by `AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS=true`; they can inspect historical feedback while recording stays disabled and never write. Internal lifecycle review is separately gated by `AGENTMEMORY_SKILL_LIFECYCLE_REVIEW=true`; it returns a deterministic review recommendation from current skill and feedback evidence, without changing counters, status, or lifecycle.
 
 ---
 
@@ -1499,6 +1499,7 @@ Create `~/.agentmemory/.env`:
 # AGENTMEMORY_SKILL_FEEDBACK=false # Enables direct internal append-only feedback recording only when skills are enabled; no REST, MCP, hook, counters, or lifecycle updates.
 # AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS=false # Enables internal read-only ledger diagnostics when skills are enabled; independent of feedback recording and no writes.
 # AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT=100 # Bounded to 1..500 returned diagnostic events.
+# AGENTMEMORY_SKILL_LIFECYCLE_REVIEW=false # Enables internal read-only lifecycle review when skills are enabled; no REST, MCP, counters, status, or lifecycle writes.
 # LESSON_DECAY_ENABLED=true
 # OBSIDIAN_AUTO_EXPORT=false
 # AGENTMEMORY_EXPORT_ROOT=~/.agentmemory

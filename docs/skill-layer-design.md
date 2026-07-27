@@ -438,6 +438,21 @@ Phase 3A is not reinforcement. Phase 3B, idempotent application of approved
 counter deltas with its own atomicity design, remains future and separately
 reviewed.
 
+### Read-Only Lifecycle Review
+
+Phase 4A adds the internal-only `mem::skill-lifecycle-review` evaluator. It is
+default-off behind `AGENTMEMORY_SKILL_LIFECYCLE_REVIEW` and requires
+`AGENTMEMORY_SKILLS=true`. The evaluator reads one current `AgentSkill` and the
+existing append-only feedback ledger, validates feedback without repairing it,
+and considers only current-version, scope-compatible evidence.
+
+It returns an advisory `review` or `no_review` recommendation with transparent
+reasons. Corrections, stale evidence, and failures exceeding successes request
+manual review; inactive skills and evidence within the expected range do not.
+It always returns `applied: false`: it does not mutate a skill or feedback row,
+change counters or lifecycle fields, prescribe retirement/supersession, expose
+a REST or MCP surface, or execute a lifecycle transition.
+
 ### Phase 3B Idempotency Contract
 
 The Phase 3B design contract is documented in
@@ -524,7 +539,10 @@ lifecycle check; PR13b does not invent or persist a new status.
    planner flag alone remains read-only.
 16. **Phase 3B4 - Optional reviewed public surface: future and not implied by
     prior phases.** Any REST or MCP exposure requires its own authorization.
-17. **Phase 4 - Review-driven retirement and supersession: future.** Lifecycle
+17. **Phase 4A - Read-only lifecycle review recommendation: implemented.** It
+    identifies evidence that merits explicit human review without changing
+    lifecycle state.
+18. **Phase 4B - Review-driven retirement and supersession: future.** Lifecycle
     changes remain explicit and auditable.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
