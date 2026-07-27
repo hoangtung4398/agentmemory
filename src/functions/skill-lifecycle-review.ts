@@ -5,11 +5,8 @@ import type { StateKV } from "../state/kv.js";
 import type {
   AgentSkill,
   SkillFeedbackEvent,
-  SkillFeedbackKind,
-  SkillLifecycleRecommendation,
   SkillLifecycleReviewEvidenceCounts,
   SkillLifecycleReviewInput,
-  SkillLifecycleReviewReasonCode,
   SkillLifecycleReviewResult,
 } from "../types.js";
 import {
@@ -17,6 +14,11 @@ import {
   MAX_SKILL_FEEDBACK_ID_LENGTH,
   MAX_SKILL_FEEDBACK_SCOPE_LENGTH,
 } from "./skill-feedback-model.js";
+import {
+  emptySkillLifecycleEvidenceCounts,
+  evaluateSkillLifecycleReview,
+  isValidLifecycleReviewSkill,
+} from "./skill-lifecycle-review-policy.js";
 
 interface NormalizedReviewInput {
   skillId: string;
@@ -26,22 +28,7 @@ interface NormalizedReviewInput {
 }
 
 function evidenceCounts(): SkillLifecycleReviewEvidenceCounts {
-  return {
-    total: 0,
-    success: 0,
-    failure: 0,
-    correction: 0,
-    stale: 0,
-    userConfirmedTotal: 0,
-    userConfirmedSuccess: 0,
-    userConfirmedFailure: 0,
-    userConfirmedCorrection: 0,
-    userConfirmedStale: 0,
-    agentObservedTotal: 0,
-    agentObservedSuccess: 0,
-    agentObservedFailure: 0,
-    agentObservedStale: 0,
-  };
+  return emptySkillLifecycleEvidenceCounts();
 }
 
 function result(success: boolean, enabled: boolean, reason?: string): SkillLifecycleReviewResult {
@@ -96,114 +83,8 @@ function normalizeInput(input: SkillLifecycleReviewInput | undefined): Normalize
   };
 }
 
-function isValidAgentSkill(value: unknown, skillId: string): value is AgentSkill {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const skill = value as Record<string, unknown>;
-  return skill.id === skillId &&
-    Number.isInteger(skill.version) && (skill.version as number) > 0 &&
-    (skill.status === "active" || skill.status === "retired" || skill.status === "superseded") &&
-    (skill.project === undefined || normalizedString(skill.project, MAX_SKILL_FEEDBACK_SCOPE_LENGTH) !== undefined) &&
-    (skill.agentId === undefined || normalizedString(skill.agentId, MAX_SKILL_FEEDBACK_SCOPE_LENGTH) !== undefined);
-}
-
 function hasMatchingScope(skill: AgentSkill, input: NormalizedReviewInput): boolean {
   return skill.project === input.project && skill.agentId === input.agentId;
-}
-
-function isApplicable(event: SkillFeedbackEvent, skill: AgentSkill): boolean {
-  return event.skillId === skill.id &&
-    event.skillVersion === skill.version &&
-    (skill.project === undefined || event.project === skill.project) &&
-    (skill.agentId === undefined || event.agentId === skill.agentId);
-}
-
-function compareIdsAscending(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
-
-function sortEvents(events: readonly SkillFeedbackEvent[]): SkillFeedbackEvent[] {
-  return [...events].sort((a, b) => {
-    const timestampDifference = Date.parse(b.createdAt) - Date.parse(a.createdAt);
-    return timestampDifference !== 0 ? timestampDifference : compareIdsAscending(a.id, b.id);
-  });
-}
-
-function countEvidence(events: readonly SkillFeedbackEvent[]): SkillLifecycleReviewEvidenceCounts {
-  const counts = evidenceCounts();
-  for (const event of events) {
-    counts.total++;
-    counts[event.kind]++;
-    if (event.attribution === "user-confirmed") {
-      counts.userConfirmedTotal++;
-      if (event.kind === "success") counts.userConfirmedSuccess++;
-      if (event.kind === "failure") counts.userConfirmedFailure++;
-      if (event.kind === "correction") counts.userConfirmedCorrection++;
-      if (event.kind === "stale") counts.userConfirmedStale++;
-    } else {
-      counts.agentObservedTotal++;
-      if (event.kind === "success") counts.agentObservedSuccess++;
-      if (event.kind === "failure") counts.agentObservedFailure++;
-      if (event.kind === "stale") counts.agentObservedStale++;
-    }
-  }
-  return counts;
-}
-
-function duplicateIds(events: readonly SkillFeedbackEvent[]): string[] {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const event of events) {
-    if (seen.has(event.id)) duplicates.add(event.id);
-    else seen.add(event.id);
-  }
-  return [...duplicates].sort(compareIdsAscending);
-}
-
-function recommendation(
-  applicableCount: number,
-  counts: SkillLifecycleReviewEvidenceCounts,
-  latestUserConfirmedKind: SkillFeedbackKind | undefined,
-): { recommendation: SkillLifecycleRecommendation; reasonCodes: SkillLifecycleReviewReasonCode[] } {
-  if (counts.userConfirmedStale >= 2 && latestUserConfirmedKind === "stale") {
-    return { recommendation: "review_for_retirement", reasonCodes: ["repeated_user_confirmed_stale"] };
-  }
-  if (counts.userConfirmedCorrection >= 1 && latestUserConfirmedKind !== "success") {
-    return {
-      recommendation: "review_for_revision",
-      reasonCodes: [
-        "user_confirmed_correction",
-        ...(counts.userConfirmedFailure >= 2 ? ["repeated_user_confirmed_failure" as const] : []),
-      ],
-    };
-  }
-  if (counts.userConfirmedFailure >= 2 && latestUserConfirmedKind !== "success") {
-    return { recommendation: "review_for_revision", reasonCodes: ["repeated_user_confirmed_failure"] };
-  }
-  if (
-    counts.userConfirmedSuccess >= 2 &&
-    counts.failure === 0 &&
-    counts.correction === 0 &&
-    counts.stale === 0
-  ) {
-    return { recommendation: "keep_active", reasonCodes: ["stable_user_confirmed_success"] };
-  }
-  if (applicableCount === 0) {
-    return { recommendation: "none", reasonCodes: ["no_applicable_feedback"] };
-  }
-  if (latestUserConfirmedKind === "success") {
-    return {
-      recommendation: "none",
-      reasonCodes: [
-        "latest_user_confirmed_success",
-        ...((counts.failure > 0 || counts.correction > 0 || counts.stale > 0)
-          ? ["negative_feedback_present" as const]
-          : []),
-      ],
-    };
-  }
-  return { recommendation: "none", reasonCodes: ["insufficient_user_confirmed_evidence"] };
 }
 
 export function registerSkillLifecycleReviewFunction(sdk: ISdk, kv: StateKV): void {
@@ -223,7 +104,7 @@ export function registerSkillLifecycleReviewFunction(sdk: ISdk, kv: StateKV): vo
       } catch {
         return result(false, true, "failed to load skill lifecycle review");
       }
-      if (stored === null || !isValidAgentSkill(stored, input.skillId)) {
+      if (stored === null || !isValidLifecycleReviewSkill(stored, input.skillId)) {
         return result(false, true, "skill not found");
       }
       if (input.skillVersion !== undefined && input.skillVersion !== stored.version) {
@@ -254,37 +135,32 @@ export function registerSkillLifecycleReviewFunction(sdk: ISdk, kv: StateKV): vo
       }
 
       const validEvents = rows.filter((row): row is SkillFeedbackEvent => isValidSkillFeedbackEvent(row));
-      const applicableEvents = sortEvents(validEvents.filter((event) => isApplicable(event, stored)));
-      const sourceEventIds = applicableEvents.map((event) => event.id);
-      const evidenceCounts = countEvidence(applicableEvents);
-      const duplicates = duplicateIds(applicableEvents);
-      const latestUserConfirmedKind = applicableEvents.find(
-        (event) => event.attribution === "user-confirmed",
-      )?.kind;
+      const evaluation = evaluateSkillLifecycleReview(stored, validEvents);
       const response = {
         ...base,
         scannedCount: rows.length,
         validCount: validEvents.length,
         malformedCount: rows.length - validEvents.length,
-        applicableCount: applicableEvents.length,
-        ignoredCount: validEvents.length - applicableEvents.length,
-        evidenceCounts,
-        sourceEventIds,
-        duplicateEventIds: duplicates,
-        ...(applicableEvents[0] === undefined ? {} : { latestEvidenceAt: applicableEvents[0].createdAt }),
-        ...(latestUserConfirmedKind === undefined ? {} : { latestUserConfirmedKind }),
+        applicableCount: evaluation.applicableCount,
+        ignoredCount: validEvents.length - evaluation.applicableCount,
+        evidenceCounts: evaluation.evidenceCounts,
+        sourceEventIds: evaluation.sourceEventIds,
+        duplicateEventIds: evaluation.duplicateEventIds,
+        ...(evaluation.latestEvidenceAt === undefined ? {} : { latestEvidenceAt: evaluation.latestEvidenceAt }),
+        ...(evaluation.latestUserConfirmedKind === undefined ? {} : { latestUserConfirmedKind: evaluation.latestUserConfirmedKind }),
       };
 
-      if (duplicates.length > 0) {
+      if (!evaluation.success) {
         return {
-          ...result(false, true, "duplicate feedback event id"),
+          ...result(false, true, evaluation.reason),
           ...response,
         };
       }
       return {
         ...result(true, true),
         ...response,
-        ...recommendation(applicableEvents.length, evidenceCounts, latestUserConfirmedKind),
+        recommendation: evaluation.recommendation,
+        reasonCodes: evaluation.reasonCodes,
       };
     },
   );

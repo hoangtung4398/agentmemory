@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerSkillLifecycleReviewFunction } from "../src/functions/skill-lifecycle-review.js";
+import { evaluateSkillLifecycleReview } from "../src/functions/skill-lifecycle-review-policy.js";
 import { KV } from "../src/state/schema.js";
 import type { AgentSkill, SkillFeedbackEvent } from "../src/types.js";
 
@@ -590,5 +591,20 @@ describe("mem::skill-lifecycle-review", () => {
     expect(highResult).toEqual(lowResult);
     expect(JSON.stringify(lowEvidenceSkill)).toBe(beforeLow);
     expect(JSON.stringify(highEvidenceSkill)).toBe(beforeHigh);
+  });
+
+  it("keeps shared-policy output detached from persisted evidence and never invokes inventory", () => {
+    const storedSkill = skill();
+    const storedEvents = [event("new"), event("old", { createdAt: "2026-07-20T00:00:00.000Z" })];
+    const beforeSkill = JSON.stringify(storedSkill);
+    const beforeEvents = JSON.stringify(storedEvents);
+    const evaluation = evaluateSkillLifecycleReview(storedSkill, storedEvents);
+
+    evaluation.sourceEventIds.push("changed");
+    evaluation.evidenceCounts.total = 999;
+    evaluation.reasonCodes.push("no_applicable_feedback");
+    expect(JSON.stringify(storedSkill)).toBe(beforeSkill);
+    expect(JSON.stringify(storedEvents)).toBe(beforeEvents);
+    expect(sdk.functions.has("mem::skill-lifecycle-review-inventory")).toBe(false);
   });
 });
