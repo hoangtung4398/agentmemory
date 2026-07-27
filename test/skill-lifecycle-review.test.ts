@@ -231,6 +231,35 @@ describe("mem::skill-lifecycle-review", () => {
     expectNoWrites();
   });
 
+  it.each([
+    ["persisted id differs", skill({ id: "skill_other" })],
+    ["zero version", { ...skill(), version: 0 }],
+    ["negative version", { ...skill(), version: -1 }],
+    ["decimal version", { ...skill(), version: 1.5 }],
+    ["string version", { ...skill(), version: "2" }],
+    ["unknown status", { ...skill(), status: "unknown" }],
+    ["blank project", { ...skill(), project: " " }],
+    ["oversized project", { ...skill(), project: "p".repeat(501) }],
+    ["non-string project", { ...skill(), project: 1 }],
+    ["blank agent", { ...skill(), agentId: " " }],
+    ["oversized agent", { ...skill(), agentId: "a".repeat(501) }],
+    ["non-string agent", { ...skill(), agentId: false }],
+  ])("rejects malformed persisted skill: %s", async (_name, malformedSkill) => {
+    enableReview();
+    kv = mockKV([], malformedSkill);
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+
+    await expect(review()).resolves.toMatchObject({
+      success: false,
+      enabled: true,
+      recommendation: "none",
+      reason: "skill not found",
+    });
+    expect(kv.getCalls).toEqual([{ scope: KV.skills, key: "skill_release" }]);
+    expect(kv.listCalls).toEqual([]);
+    expectNoWrites();
+  });
+
   it("treats scope as an assertion and rejects missing, mismatched, or unscoped assertions", async () => {
     enableReview();
     kv = mockKV([], skill());
@@ -247,9 +276,14 @@ describe("mem::skill-lifecycle-review", () => {
 
     kv = mockKV([], skill({ project: undefined, agentId: undefined }));
     registerSkillLifecycleReviewFunction(sdk as never, kv as never);
-    await expect(review({ skillId: "skill_release", project: "project-a" })).resolves.toMatchObject({
-      reason: "skill scope mismatch",
-    });
+    for (const data of [
+      { skillId: "skill_release", project: "project-a" },
+      { skillId: "skill_release", agentId: "agent-a" },
+      { skillId: "skill_release", project: "project-a", agentId: "agent-a" },
+    ]) {
+      await expect(review(data)).resolves.toMatchObject({ reason: "skill scope mismatch" });
+    }
+    expect(kv.listCalls).toEqual([]);
     expectNoWrites();
   });
 
@@ -364,6 +398,28 @@ describe("mem::skill-lifecycle-review", () => {
     expectNoWrites();
   });
 
+  it("returns every duplicate occurrence while sorting unique duplicate IDs", async () => {
+    enableReview();
+    kv = mockKV([
+      event("z", { createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("a", { createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("m", { createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("z", { kind: "failure", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("a", { kind: "failure", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("m", { kind: "failure", createdAt: "2026-07-22T00:00:00.000Z" }),
+    ], skill());
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+
+    await expect(review()).resolves.toMatchObject({
+      success: false,
+      recommendation: "none",
+      reason: "duplicate feedback event id",
+      duplicateEventIds: ["a", "m", "z"],
+      sourceEventIds: ["a", "a", "m", "m", "z", "z"],
+    });
+    expectNoWrites();
+  });
+
   it("returns a stable read failure when the active skill ledger cannot be listed", async () => {
     enableReview();
     kv = mockKV([], skill());
@@ -455,5 +511,84 @@ describe("mem::skill-lifecycle-review", () => {
       });
       expectNoWrites();
     }
+  });
+
+  it("does not recommend retirement when newer confirmed success follows stale evidence", async () => {
+    enableReview();
+    kv = mockKV([
+      event("success", { createdAt: "2026-07-23T00:00:00.000Z" }),
+      event("stale-1", { kind: "stale", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("stale-2", { kind: "stale", createdAt: "2026-07-21T00:00:00.000Z" }),
+    ], skill());
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+
+    const result = await review();
+    expect(result).toMatchObject({
+      recommendation: "none",
+      reasonCodes: ["latest_user_confirmed_success", "negative_feedback_present"],
+      latestUserConfirmedKind: "success",
+    });
+    expect(result.recommendation).not.toBe("review_for_retirement");
+    expectNoWrites();
+  });
+
+  it("does not keep active when agent-observed negative evidence is present", async () => {
+    enableReview();
+    kv = mockKV([
+      event("success-new", { createdAt: "2026-07-23T00:00:00.000Z" }),
+      event("agent-failure", { kind: "failure", attribution: "agent-observed", createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("success-old", { createdAt: "2026-07-21T00:00:00.000Z" }),
+    ], skill());
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+
+    const result = await review();
+    expect(result).toMatchObject({
+      recommendation: "none",
+      reasonCodes: ["latest_user_confirmed_success", "negative_feedback_present"],
+    });
+    expect(result.recommendation).not.toBe("keep_active");
+    expectNoWrites();
+  });
+
+  it("does not let persisted quality metrics affect lifecycle review output", async () => {
+    enableReview();
+    const rows = [
+      event("success-new", { createdAt: "2026-07-23T00:00:00.000Z" }),
+      event("success-old", { createdAt: "2026-07-21T00:00:00.000Z" }),
+    ];
+    const lowEvidenceSkill = skill({
+      usageCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      confidence: 0,
+      strength: 0,
+    });
+    const highEvidenceSkill = {
+      ...skill({
+        usageCount: 999999,
+        successCount: 999999,
+        failureCount: 999999,
+        confidence: 1,
+        strength: 1,
+      }),
+      lastUsedAt: "2026-07-23T00:00:00.000Z",
+      lastReinforcedAt: "2026-07-23T00:00:00.000Z",
+    };
+    const beforeLow = JSON.stringify(lowEvidenceSkill);
+    const beforeHigh = JSON.stringify(highEvidenceSkill);
+
+    kv = mockKV(rows, lowEvidenceSkill);
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+    const lowResult = await review();
+    expectNoWrites();
+
+    kv = mockKV(rows, highEvidenceSkill);
+    registerSkillLifecycleReviewFunction(sdk as never, kv as never);
+    const highResult = await review();
+    expectNoWrites();
+
+    expect(highResult).toEqual(lowResult);
+    expect(JSON.stringify(lowEvidenceSkill)).toBe(beforeLow);
+    expect(JSON.stringify(highEvidenceSkill)).toBe(beforeHigh);
   });
 });
