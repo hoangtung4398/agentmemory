@@ -376,6 +376,7 @@ export interface SkillConfig {
   feedbackDiagnosticsEnabled: boolean;
   feedbackDiagnosticsLimit: number;
   feedbackReducerEnabled: boolean;
+  lifecycleReviewEnabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
   recallEnabled: boolean;
@@ -856,6 +857,69 @@ export interface SkillFeedbackReductionPlanResult {
   sourceEventIds: string[];
   evidenceHash?: string;
   duplicateEventIds: string[];
+  reason?: string;
+}
+
+export type SkillLifecycleRecommendation =
+  | "none"
+  | "keep_active"
+  | "review_for_revision"
+  | "review_for_retirement";
+
+export type SkillLifecycleReviewReasonCode =
+  | "skill_not_active"
+  | "no_applicable_feedback"
+  | "repeated_user_confirmed_stale"
+  | "user_confirmed_correction"
+  | "repeated_user_confirmed_failure"
+  | "stable_user_confirmed_success"
+  | "latest_user_confirmed_success"
+  | "negative_feedback_present"
+  | "insufficient_user_confirmed_evidence";
+
+export interface SkillLifecycleReviewInput {
+  skillId?: unknown;
+  skillVersion?: unknown;
+  project?: unknown;
+  agentId?: unknown;
+}
+
+export interface SkillLifecycleReviewEvidenceCounts {
+  total: number;
+  success: number;
+  failure: number;
+  correction: number;
+  stale: number;
+  userConfirmedTotal: number;
+  userConfirmedSuccess: number;
+  userConfirmedFailure: number;
+  userConfirmedCorrection: number;
+  userConfirmedStale: number;
+  agentObservedTotal: number;
+  agentObservedSuccess: number;
+  agentObservedFailure: number;
+  agentObservedStale: number;
+}
+
+export interface SkillLifecycleReviewResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  skillId?: string;
+  skillVersion?: number;
+  currentStatus?: AgentSkillStatus;
+  recommendation: SkillLifecycleRecommendation;
+  reasonCodes: SkillLifecycleReviewReasonCode[];
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  applicableCount: number;
+  ignoredCount: number;
+  evidenceCounts: SkillLifecycleReviewEvidenceCounts;
+  sourceEventIds: string[];
+  duplicateEventIds: string[];
+  latestEvidenceAt?: string;
+  latestUserConfirmedKind?: SkillFeedbackKind;
   reason?: string;
 }
 

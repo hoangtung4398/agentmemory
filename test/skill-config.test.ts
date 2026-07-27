@@ -15,6 +15,7 @@ const ENV_KEYS = [
   "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS",
   "AGENTMEMORY_SKILL_FEEDBACK_DIAGNOSTICS_LIMIT",
   "AGENTMEMORY_SKILL_FEEDBACK_REDUCER",
+  "AGENTMEMORY_SKILL_LIFECYCLE_REVIEW",
   "AGENTMEMORY_SKILL_PROMOTION",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_STRENGTH",
   "AGENTMEMORY_SKILL_PROMOTION_MIN_EVIDENCE",
@@ -70,6 +71,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
       feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -93,6 +95,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
       feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 50,
       recallEnabled: false,
@@ -129,6 +132,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
       feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: false,
       diagnosticsEnabled: false,
       diagnosticsLimit: 1,
       recallEnabled: false,
@@ -159,6 +163,7 @@ describe("AgentSkill read model configuration", () => {
       feedbackDiagnosticsEnabled: false,
       feedbackDiagnosticsLimit: 100,
       feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: false,
       diagnosticsEnabled: true,
       diagnosticsLimit: 23,
       recallEnabled: false,
@@ -236,6 +241,34 @@ describe("AgentSkill read model configuration", () => {
       feedbackEnabled: false,
       feedbackDiagnosticsEnabled: true,
       feedbackDiagnosticsLimit: 500,
+      recallEnabled: false,
+      contextEnabled: false,
+      promotionEnabled: false,
+    });
+  });
+
+  it("keeps lifecycle review independent from feedback, diagnostics, reduction, and recall", async () => {
+    process.env["AGENTMEMORY_SKILL_LIFECYCLE_REVIEW"] = "true";
+    let { loadSkillConfig } = await freshConfig();
+
+    expect(loadSkillConfig()).toMatchObject({
+      enabled: false,
+      feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: false,
+      recallEnabled: false,
+      contextEnabled: false,
+      promotionEnabled: false,
+    });
+
+    process.env["AGENTMEMORY_SKILLS"] = "true";
+    ({ loadSkillConfig } = await freshConfig());
+    expect(loadSkillConfig()).toMatchObject({
+      feedbackEnabled: false,
+      feedbackDiagnosticsEnabled: false,
+      feedbackReducerEnabled: false,
+      lifecycleReviewEnabled: true,
       recallEnabled: false,
       contextEnabled: false,
       promotionEnabled: false,
