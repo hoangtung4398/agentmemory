@@ -376,6 +376,7 @@ export interface SkillConfig {
   feedbackDiagnosticsEnabled: boolean;
   feedbackDiagnosticsLimit: number;
   feedbackReducerEnabled: boolean;
+  lifecycleReviewEnabled: boolean;
   diagnosticsEnabled: boolean;
   diagnosticsLimit: number;
   recallEnabled: boolean;
@@ -856,6 +857,49 @@ export interface SkillFeedbackReductionPlanResult {
   sourceEventIds: string[];
   evidenceHash?: string;
   duplicateEventIds: string[];
+  reason?: string;
+}
+
+export type SkillLifecycleReviewRecommendation = "no_review" | "review";
+
+export type SkillLifecycleReviewReason =
+  | "skill_not_active"
+  | "no_applicable_feedback"
+  | "feedback_within_expected_range"
+  | "correction_feedback"
+  | "stale_feedback"
+  | "failures_exceed_successes";
+
+export interface SkillLifecycleReviewInput {
+  skillId?: unknown;
+  skillVersion?: unknown;
+  project?: unknown;
+  agentId?: unknown;
+}
+
+export interface SkillLifecycleReviewFeedbackCounts {
+  success: number;
+  failure: number;
+  correction: number;
+  stale: number;
+}
+
+export interface SkillLifecycleReviewResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  skillId?: string;
+  skillVersion?: number;
+  status?: AgentSkillStatus;
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  applicableCount: number;
+  ignoredCount: number;
+  feedback: SkillLifecycleReviewFeedbackCounts;
+  recommendation: SkillLifecycleReviewRecommendation;
+  reasons: SkillLifecycleReviewReason[];
+  sourceEventIds: string[];
   reason?: string;
 }
 
