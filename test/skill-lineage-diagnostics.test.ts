@@ -18,10 +18,13 @@ const ORIGINAL: Record<string, string | undefined> = {};
 
 function mockSdk() {
   const functions = new Map<string, Function>();
+  const triggerCalls: unknown[] = [];
   return {
     functions,
+    triggerCalls,
     registerFunction: (id: string, handler: Function) => functions.set(id, handler),
     getFunction: (id: string) => functions.get(id),
+    trigger: async (payload: unknown) => { triggerCalls.push(payload); return undefined; },
   };
 }
 
@@ -119,6 +122,7 @@ describe("mem::skill-lineage-diagnostics", () => {
     expect(kv.setCalls).toEqual([]);
     expect(kv.updateCalls).toEqual([]);
     expect(kv.deleteCalls).toEqual([]);
+    expect(sdk.triggerCalls).toEqual([]);
   }
 
   it("registers only the internal lineage diagnostics function", () => {
@@ -155,7 +159,7 @@ describe("mem::skill-lineage-diagnostics", () => {
     { agentId: " " }, { agentId: "x".repeat(501) }, { agentId: false },
     { status: "ACTIVE" }, { relationState: "bad" }, { findingCode: "bad" }, { scopeRelation: "bad" },
     { limit: 0 }, { limit: -1 }, { limit: 1.5 }, { limit: "2" },
-    { limit: Number.NaN }, { limit: Number.POSITIVE_INFINITY }, { limit: 501 },
+    { limit: Number.NaN }, { limit: Number.POSITIVE_INFINITY }, { limit: Number.NEGATIVE_INFINITY }, { limit: 501 },
   ])("rejects invalid input before KV access: %o", async (data) => {
     enable();
     await expect(diagnostics(data)).resolves.toMatchObject({
@@ -309,6 +313,185 @@ describe("mem::skill-lineage-diagnostics", () => {
     const reversed = await diagnostics({ findingCode: "multiple_superseders" });
     expect(reversed).toEqual(original);
     expect(kv.listCalls).toEqual([KV.skills]);
+    expectNoWrites();
+  });
+
+  it.each([
+    ["id absent", () => { const row = minimal("x") as Record<string, unknown>; delete row.id; return row; }],
+    ["id blank", () => minimal(" ")],
+    ["id oversized", () => minimal("x".repeat(201))],
+    ["version zero", () => minimal("x", "active", { version: 0 })],
+    ["version negative", () => minimal("x", "active", { version: -1 })],
+    ["version decimal", () => minimal("x", "active", { version: 1.5 })],
+    ["version string", () => minimal("x", "active", { version: "1" })],
+    ["unknown status", () => minimal("x", "active", { status: "unknown" })],
+    ["blank project", () => minimal("x", "active", { project: " " })],
+    ["oversized project", () => minimal("x", "active", { project: "x".repeat(501) })],
+    ["non-string project", () => minimal("x", "active", { project: 1 })],
+    ["blank agent", () => minimal("x", "active", { agentId: " " })],
+    ["oversized agent", () => minimal("x", "active", { agentId: "x".repeat(501) })],
+    ["non-string agent", () => minimal("x", "active", { agentId: false })],
+  ])("counts and skips malformed minimal skill row: %s", async (_name, createRow) => {
+    enable();
+    kv = mockKV([minimal("valid"), createRow()]);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    await expect(diagnostics()).resolves.toMatchObject({
+      success: true,
+      skillRowCount: 2,
+      validSkillCount: 1,
+      malformedSkillCount: 1,
+      items: [{ skillId: "valid" }],
+    });
+    expect(kv.listCalls).toEqual([KV.skills]);
+    expectNoWrites();
+  });
+
+  it.each([
+    ["null", null], ["boolean", true], ["object", {}], ["array", []],
+    ["empty", ""], ["whitespace", "  "], ["oversized", "x".repeat(201)],
+  ])("isolates malformed supersedes reference: %s", async (_name, supersedes) => {
+    enable();
+    const rows = [skill("target"), skill("source", { supersedes: supersedes as never })];
+    const before = JSON.stringify(rows);
+    kv = mockKV(rows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const result = await diagnostics();
+    const source = result.items.find((item: { skillId: string }) => item.skillId === "source");
+    expect(source).toMatchObject({
+      relationState: "malformed_reference",
+      scopeRelation: "not_applicable",
+      findingCodes: ["malformed_supersedes"],
+      incomingSupersederIds: [],
+      cycleMemberIds: [],
+    });
+    expect(source).not.toHaveProperty("supersedes");
+    expect(result.summary).toMatchObject({
+      declaredReferenceCount: 0,
+      resolvedReferenceCount: 0,
+      missingReferenceCount: 0,
+      cycleComponentCount: 0,
+      cycleSkillCount: 0,
+      branchingTargetCount: 0,
+    });
+    expect(JSON.stringify(rows)).toBe(before);
+    expectNoWrites();
+  });
+
+  it("preserves raw padded references and excludes malformed, missing, and self edges from incoming topology", async () => {
+    enable();
+    const rows = [
+      skill("target"), skill("resolved", { supersedes: "target" }),
+      skill("leading", { supersedes: " target" }), skill("trailing", { supersedes: "target " }),
+      skill("both", { supersedes: " target " }), skill("bad", { supersedes: " " }),
+      skill("missing", { supersedes: "gone" }), skill("self", { supersedes: "self" }),
+      skill("cycle-a", { supersedes: "cycle-b" }), skill("cycle-b", { supersedes: "cycle-a" }),
+      skill("cycle-to-target", { supersedes: "target" }),
+    ];
+    kv = mockKV(rows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const result = await diagnostics();
+    const byId = new Map(result.items.map((item: { skillId: string }) => [item.skillId, item]));
+    expect(byId.get("resolved")).toMatchObject({ relationState: "resolved", supersedes: "target" });
+    for (const id of ["leading", "trailing", "both"]) {
+      expect(byId.get(id)).toMatchObject({ relationState: "missing_target", supersedes: id === "leading" ? " target" : id === "trailing" ? "target " : " target " });
+    }
+    expect(byId.get("target")).toMatchObject({
+      incomingSupersederIds: ["cycle-to-target", "resolved"],
+      findingCodes: ["multiple_superseders"],
+    });
+    expect(byId.get("cycle-a")).toMatchObject({ relationState: "cycle", incomingSupersederIds: ["cycle-b"] });
+    expect(result.summary).toMatchObject({ branchingTargetCount: 1 });
+    expectNoWrites();
+  });
+
+  it("keeps cycle components, summaries, and ordering identical across physical row order", async () => {
+    enable();
+    const rows = [
+      skill("a", { supersedes: "b" }), skill("b", { supersedes: "a" }), skill("lead", { supersedes: "a" }),
+      skill("c", { supersedes: "d" }), skill("d", { supersedes: "e" }), skill("e", { supersedes: "c" }),
+      skill("chain-one", { supersedes: "chain-two" }), skill("chain-two"), skill("self", { supersedes: "self" }),
+    ];
+    kv = mockKV(rows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const original = await diagnostics();
+    kv = mockKV([...rows].reverse());
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const reversed = await diagnostics();
+    expect(reversed).toEqual(original);
+    expect(original.summary).toMatchObject({ cycleComponentCount: 2, cycleSkillCount: 5 });
+    const byId = new Map(original.items.map((item: { skillId: string }) => [item.skillId, item]));
+    expect(byId.get("lead")).toMatchObject({ relationState: "resolved", cycleMemberIds: [] });
+    expect(byId.get("self")).toMatchObject({ relationState: "self_reference" });
+    expect(byId.get("a")).toMatchObject({ incomingSupersederIds: ["b", "lead"] });
+    expectNoWrites();
+  });
+
+  it("returns every canonical finding priority and complete summary before filters and limits", async () => {
+    enable();
+    const rows = [
+      skill("root", { status: "retired" }), skill("resolved", { supersedes: "root", status: "superseded" }),
+      skill("malformed", { supersedes: " " }), skill("self", { supersedes: "self" }),
+      skill("missing", { supersedes: "gone" }), skill("cycle-a", { supersedes: "cycle-b" }),
+      skill("cycle-b", { supersedes: "cycle-a" }), skill("cycle-source", { supersedes: "cycle-a" }),
+      skill("second-source", { supersedes: "cycle-a" }),
+    ];
+    kv = mockKV(rows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const all = await diagnostics();
+    expect(all.items.map((item: { skillId: string }) => item.skillId)).toEqual([
+      "malformed", "self", "cycle-a", "cycle-b", "missing", "cycle-source", "resolved", "second-source", "root",
+    ]);
+    expect(all.items.find((item: { skillId: string }) => item.skillId === "cycle-a")).toMatchObject({
+      findingCodes: ["cycle_detected", "multiple_superseders"],
+    });
+    expect(all.summary).toEqual({
+      statusCounts: { active: 7, retired: 1, superseded: 1 },
+      relationStateCounts: { root: 1, resolved: 3, missing_target: 1, malformed_reference: 1, self_reference: 1, cycle: 2 },
+      findingCounts: { malformed_supersedes: 1, self_supersedes: 1, cycle_detected: 2, missing_superseded_skill: 1, multiple_superseders: 1 },
+      declaredReferenceCount: 6,
+      resolvedReferenceCount: 5,
+      missingReferenceCount: 1,
+      cycleComponentCount: 1,
+      cycleSkillCount: 2,
+      branchingTargetCount: 1,
+    });
+    const filtered = await diagnostics({ project: "project-a", findingCode: "cycle_detected", limit: 1 });
+    expect(filtered).toMatchObject({ matchedCount: 2, returnedCount: 1, resultTruncated: true });
+    expect(filtered.summary).toEqual(all.summary);
+    expectNoWrites();
+  });
+
+  it("keeps complete filter, status/version neutrality, defensive failure arrays, and operation boundaries", async () => {
+    enable();
+    const rows = [
+      skill("active-active", { supersedes: "target-active", version: 1 }), skill("target-active", { version: 3 }),
+      skill("active-retired", { supersedes: "target-retired", version: 4 }), skill("target-retired", { status: "retired", version: 1 }),
+      skill("active-superseded", { supersedes: "target-superseded" }), skill("target-superseded", { status: "superseded" }),
+      skill("retired-active", { status: "retired", supersedes: "target-active" }),
+      skill("superseded-active", { status: "superseded", supersedes: "target-active", agentId: "agent-b" }),
+      skill("unscoped", { project: undefined, agentId: undefined }),
+    ];
+    kv = mockKV(rows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const all = await diagnostics();
+    for (const id of ["active-active", "active-retired", "active-superseded", "retired-active", "superseded-active"]) {
+      expect(all.items.find((item: { skillId: string }) => item.skillId === id)).toMatchObject({ relationState: "resolved" });
+    }
+    expect((await diagnostics({ project: "project-a" })).matchedCount).toBe(8);
+    expect((await diagnostics({ agentId: "agent-b" })).items.map((item: { skillId: string }) => item.skillId)).toEqual(["superseded-active"]);
+    expect((await diagnostics({ status: "retired" })).items.map((item: { skillId: string }) => item.skillId)).toEqual(["retired-active", "target-retired"]);
+    expect((await diagnostics({ relationState: "root" })).items.map((item: { skillId: string }) => item.skillId)).toContain("unscoped");
+    expect((await diagnostics({ scopeRelation: "different" })).items.map((item: { skillId: string }) => item.skillId)).toEqual(["superseded-active"]);
+    expect((await diagnostics({ project: "project-a", agentId: "agent-a", status: "active", relationState: "resolved", scopeRelation: "same" })).items.map((item: { skillId: string }) => item.skillId)).toEqual(["active-active", "active-retired", "active-superseded"]);
+
+    const duplicateRows = [minimal("b"), minimal("a"), minimal("a", "retired")];
+    kv = mockKV(duplicateRows);
+    registerSkillLineageDiagnosticsFunction(sdk as never, kv as never);
+    const failed = await diagnostics();
+    failed.duplicateSkillIds.push("changed");
+    const repeated = await diagnostics();
+    expect(repeated.duplicateSkillIds).toEqual(["a"]);
+    expect(kv.listCalls).toEqual([KV.skills, KV.skills]);
     expectNoWrites();
   });
 
