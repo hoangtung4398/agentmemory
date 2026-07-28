@@ -923,6 +923,64 @@ export interface SkillLifecycleReviewResult {
   reason?: string;
 }
 
+export interface SkillLifecycleReviewInventoryInput {
+  project?: unknown;
+  agentId?: unknown;
+  status?: unknown;
+  recommendation?: unknown;
+  reasonCode?: unknown;
+  scanLimit?: unknown;
+  limit?: unknown;
+}
+
+export interface SkillLifecycleReviewInventoryItem {
+  success: boolean;
+  skillId: string;
+  skillVersion: number;
+  currentStatus: AgentSkillStatus;
+  project?: string;
+  agentId?: string;
+  recommendation: SkillLifecycleRecommendation;
+  reasonCodes: SkillLifecycleReviewReasonCode[];
+  applicableCount: number;
+  evidenceCounts: SkillLifecycleReviewEvidenceCounts;
+  duplicateEventIds: string[];
+  latestEvidenceAt?: string;
+  latestUserConfirmedKind?: SkillFeedbackKind;
+  reason?: string;
+}
+
+export interface SkillLifecycleReviewInventorySummary {
+  statusCounts: Record<AgentSkillStatus, number>;
+  recommendationCounts: Record<SkillLifecycleRecommendation, number>;
+  reasonCounts: Partial<Record<SkillLifecycleReviewReasonCode, number>>;
+  failedItemCount: number;
+}
+
+export interface SkillLifecycleReviewInventoryResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  skillRowCount: number;
+  validSkillCount: number;
+  malformedSkillCount: number;
+  candidateCount: number;
+  ignoredSkillCount: number;
+  scannedCount: number;
+  matchedCount: number;
+  returnedCount: number;
+  scanTruncated: boolean;
+  resultTruncated: boolean;
+  truncated: boolean;
+  feedbackScannedCount: number;
+  validFeedbackCount: number;
+  malformedFeedbackCount: number;
+  duplicateSkillIds: string[];
+  summary: SkillLifecycleReviewInventorySummary;
+  items: SkillLifecycleReviewInventoryItem[];
+}
+
 export interface TeamConfig {
   teamId: string;
   userId: string;

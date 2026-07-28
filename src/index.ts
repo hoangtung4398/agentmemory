@@ -90,6 +90,7 @@ import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSkillFeedbackDiagnosticsFunction } from "./functions/skill-feedback-diagnostics.js";
 import { registerSkillFeedbackReductionPlanFunction } from "./functions/skill-feedback-reduction-plan.js";
 import { registerSkillLifecycleReviewFunction } from "./functions/skill-lifecycle-review.js";
+import { registerSkillLifecycleReviewInventoryFunction } from "./functions/skill-lifecycle-review-inventory.js";
 import { registerSlidingWindowFunction } from "./functions/sliding-window.js";
 import { registerQueryExpansionFunction } from "./functions/query-expansion.js";
 import { registerTemporalGraphFunctions } from "./functions/temporal-graph.js";
@@ -342,6 +343,7 @@ async function main() {
   registerSkillFeedbackDiagnosticsFunction(sdk, kv);
   registerSkillFeedbackReductionPlanFunction(sdk, kv);
   registerSkillLifecycleReviewFunction(sdk, kv);
+  registerSkillLifecycleReviewInventoryFunction(sdk, kv);
   registerCascadeFunction(sdk, kv);
 
   registerSlidingWindowFunction(sdk, kv, provider);

@@ -451,6 +451,16 @@ reason codes, and source event IDs. It always returns `applied: false`: it does
 not mutate skills or feedback, change counters or status, prescribe a
 replacement, expose REST/MCP/CLI/hooks, or execute a lifecycle transition.
 
+Phase 4A2 adds the internal-only `mem::skill-lifecycle-review-inventory` diagnostic.
+It reuses the same shared pure policy as single-skill review, scans a bounded
+persisted skill population deterministically, and returns aggregate counts plus
+filterable recommendation items. Inventory responses intentionally exclude
+source event bodies and source event IDs; operators use the single-skill review
+for detailed source IDs. It performs no mutation and implies no REST or MCP
+surface. Phase 4A1 is implemented and merged, Phase 4A2 is implemented by this
+milestone, and Phase 4B lifecycle mutation remains future and separately
+authorized.
+
 ### Phase 3B Idempotency Contract
 
 The Phase 3B design contract is documented in
