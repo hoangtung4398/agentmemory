@@ -457,9 +457,20 @@ persisted skill population deterministically, and returns aggregate counts plus
 filterable recommendation items. Inventory responses intentionally exclude
 source event bodies and source event IDs; operators use the single-skill review
 for detailed source IDs. It performs no mutation and implies no REST or MCP
-surface. Phase 4A1 is implemented and merged, Phase 4A2 is implemented by this
-milestone, and Phase 4B lifecycle mutation remains future and separately
-authorized.
+surface. Phase 4A1 and Phase 4A2 are implemented and merged; Phase 4B
+lifecycle mutation remains future and separately authorized.
+
+### Read-Only Skill Lineage Topology Diagnostics
+
+Phase 4A3 adds the internal-only `mem::skill-lineage-diagnostics` function. It
+uses the existing `AGENTMEMORY_SKILLS=true` and
+`AGENTMEMORY_SKILL_DIAGNOSTICS=true` gate, performs one `KV.skills` list, and
+describes only the persisted optional `AgentSkill.supersedes` topology. It
+reports roots, resolved links, malformed and missing references,
+self-references, directed cycles, shared targets, and descriptive direct scope
+relations. It has no status or version policy, performs no mutation, and has no
+REST or MCP exposure. Phase 4A3 is implemented by this milestone; Phase 4B
+remains future and separately authorized.
 
 ### Phase 3B Idempotency Contract
 
