@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerSkillLifecycleReviewInventoryFunction } from "../src/functions/skill-lifecycle-review-inventory.js";
+import { registerSkillLifecycleReviewFunction } from "../src/functions/skill-lifecycle-review.js";
 import { KV } from "../src/state/schema.js";
 import type { AgentSkill, SkillFeedbackEvent } from "../src/types.js";
 
@@ -56,6 +57,34 @@ function mockKV(skillRows: unknown[] = [], feedbackRows: unknown[] = []) {
       return value;
     },
     delete: async (scope: string): Promise<void> => { deleteCalls.push(scope); },
+  };
+}
+
+function mockSingleReviewKV(currentSkill: unknown, feedbackRows: unknown[] = []) {
+  const getCalls: string[] = [];
+  const listCalls: string[] = [];
+  const writes: string[] = [];
+  return {
+    getCalls,
+    listCalls,
+    writes,
+    get: async <T>(scope: string): Promise<T | null> => {
+      getCalls.push(scope);
+      return currentSkill as T | null;
+    },
+    list: async <T>(scope: string): Promise<T[]> => {
+      listCalls.push(scope);
+      return feedbackRows as T[];
+    },
+    set: async <T>(scope: string, _key: string, value: T): Promise<T> => {
+      writes.push(scope);
+      return value;
+    },
+    update: async <T>(scope: string, _key: string, value: T): Promise<T> => {
+      writes.push(scope);
+      return value;
+    },
+    delete: async (scope: string): Promise<void> => { writes.push(scope); },
   };
 }
 
@@ -351,6 +380,186 @@ describe("mem::skill-lifecycle-review-inventory", () => {
     first.items[0]!.evidenceCounts.total = 999;
     expect(second.items[0]!.reasonCodes).not.toContain("no_applicable_feedback");
     expect(second.items[0]!.evidenceCounts.total).not.toBe(999);
+    expectNoWrites();
+  });
+
+  it("accepts minimal persisted skill rows and evaluates inactive rows without repairing them", async () => {
+    enableReview();
+    const rows: unknown[] = [
+      { id: "minimal-active", version: 1, status: "active", project: "project-a", agentId: "agent-a" },
+      { id: "minimal-retired", version: 1, status: "retired", project: "project-a", agentId: "agent-a" },
+      { id: "minimal-superseded", version: 1, status: "superseded", project: "project-a", agentId: "agent-a" },
+    ];
+    const before = JSON.stringify(rows);
+    kv = mockKV(rows, [event("active", "minimal-active", { skillVersion: 1 })]);
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    const result = await inventory();
+    expect(result).toMatchObject({
+      validSkillCount: 3,
+      malformedSkillCount: 0,
+      items: [
+        { skillId: "minimal-active", recommendation: "none", reasonCodes: ["latest_user_confirmed_success"] },
+        { skillId: "minimal-retired", reasonCodes: ["skill_not_active"] },
+        { skillId: "minimal-superseded", reasonCodes: ["skill_not_active"] },
+      ],
+    });
+    expect(JSON.stringify(rows)).toBe(before);
+    expectNoWrites();
+  });
+
+  it("applies exact agent, status, and combined scope filters before scanning", async () => {
+    enableReview();
+    const rows = [
+      skill("agent-a", { agentId: "agent-a", status: "active" }),
+      skill("agent-b", { agentId: "agent-b", status: "retired" }),
+      skill("unscoped", { agentId: undefined, project: undefined, status: "superseded" }),
+      skill("same-agent-other-project", { agentId: "agent-a", project: "project-b", status: "active" }),
+    ];
+    kv = mockKV(rows);
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    await expect(inventory({ agentId: "agent-a" })).resolves.toMatchObject({
+      candidateCount: 2,
+      ignoredSkillCount: 2,
+      scannedCount: 2,
+    });
+    await expect(inventory({ status: "active" })).resolves.toMatchObject({ candidateCount: 2, ignoredSkillCount: 2, scannedCount: 2 });
+    await expect(inventory({ status: "retired" })).resolves.toMatchObject({ candidateCount: 1, ignoredSkillCount: 3, scannedCount: 1 });
+    await expect(inventory({ status: "superseded" })).resolves.toMatchObject({ candidateCount: 1, ignoredSkillCount: 3, scannedCount: 1 });
+    await expect(inventory({ project: "project-a", agentId: "agent-a" })).resolves.toMatchObject({
+      candidateCount: 1,
+      items: [{ skillId: "agent-a" }],
+    });
+    expectNoWrites();
+  });
+
+  it("applies every recommendation filter after evaluation while preserving full summary", async () => {
+    enableReview();
+    const rows = [skill("retire"), skill("revise"), skill("keep"), skill("none")];
+    const feedback = [
+      event("retire-1", "retire", { kind: "stale", createdAt: "2026-07-24T00:00:00.000Z" }),
+      event("retire-2", "retire", { kind: "stale", createdAt: "2026-07-23T00:00:00.000Z" }),
+      event("revise", "revise", { kind: "correction" }),
+      event("keep-1", "keep", { createdAt: "2026-07-23T00:00:00.000Z" }),
+      event("keep-2", "keep", { createdAt: "2026-07-22T00:00:00.000Z" }),
+    ];
+    kv = mockKV(rows, feedback);
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    for (const [recommendation, skillId] of [
+      ["review_for_retirement", "retire"], ["review_for_revision", "revise"],
+      ["keep_active", "keep"], ["none", "none"],
+    ]) {
+      const result = await inventory({ recommendation });
+      expect(result.matchedCount).toBe(1);
+      expect(result.items).toMatchObject([{ skillId, recommendation }]);
+      expect(result.summary.recommendationCounts).toEqual({
+        none: 1, keep_active: 1, review_for_revision: 1, review_for_retirement: 1,
+      });
+    }
+    expectNoWrites();
+  });
+
+  it("matches single-review policy across every recommendation class and item failures", async () => {
+    enableReview();
+    const cases: Array<{ name: string; persisted: AgentSkill; feedback: SkillFeedbackEvent[] }> = [
+      { name: "retirement", persisted: skill("target"), feedback: [event("s1", "target", { kind: "stale", createdAt: "2026-07-23T00:00:00.000Z" }), event("s2", "target", { kind: "stale" })] },
+      { name: "correction", persisted: skill("target"), feedback: [event("c", "target", { kind: "correction" })] },
+      { name: "failure", persisted: skill("target"), feedback: [event("f1", "target", { kind: "failure" }), event("f2", "target", { kind: "failure", createdAt: "2026-07-20T00:00:00.000Z" })] },
+      { name: "success", persisted: skill("target"), feedback: [event("ok1", "target"), event("ok2", "target", { createdAt: "2026-07-20T00:00:00.000Z" })] },
+      { name: "latest success", persisted: skill("target"), feedback: [event("ok", "target", { createdAt: "2026-07-23T00:00:00.000Z" }), event("old", "target", { kind: "failure" })] },
+      { name: "weak", persisted: skill("target"), feedback: [event("agent", "target", { attribution: "agent-observed" })] },
+      { name: "empty", persisted: skill("target"), feedback: [] },
+      { name: "retired", persisted: skill("target", { status: "retired" }), feedback: [] },
+      { name: "superseded", persisted: skill("target", { status: "superseded" }), feedback: [] },
+      { name: "duplicate", persisted: skill("target"), feedback: [event("dupe", "target"), event("dupe", "target", { kind: "failure" })] },
+    ];
+    for (const testCase of cases) {
+      const singleSdk = mockSdk();
+      const singleKV = mockSingleReviewKV(testCase.persisted, testCase.feedback);
+      registerSkillLifecycleReviewFunction(singleSdk as never, singleKV as never);
+      const single = await singleSdk.getFunction("mem::skill-lifecycle-review")!({
+        skillId: "target", project: "project-a", agentId: "agent-a",
+      });
+      kv = mockKV([testCase.persisted], testCase.feedback);
+      registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+      const item = (await inventory()).items[0]!;
+      for (const field of ["success", "recommendation", "reasonCodes", "applicableCount", "evidenceCounts", "duplicateEventIds", "latestEvidenceAt", "latestUserConfirmedKind", "reason"] as const) {
+        expect(item[field], `${testCase.name}: ${field}`).toEqual(single[field]);
+      }
+      expect(singleKV.writes).toEqual([]);
+      expectNoWrites();
+    }
+  });
+
+  it("orders all priorities deterministically and accounts for malformed feedback", async () => {
+    enableReview();
+    const rows = [skill("failed"), skill("retire"), skill("revise"), skill("keep"), skill("none-late"), skill("none-empty")];
+    const feedback: unknown[] = [
+      event("dupe", "failed"), event("dupe", "failed", { kind: "failure" }),
+      event("s1", "retire", { kind: "stale", createdAt: "2026-07-25T00:00:00.000Z" }), event("s2", "retire", { kind: "stale", createdAt: "2026-07-24T00:00:00.000Z" }),
+      event("c", "revise", { kind: "correction" }),
+      event("k1", "keep", { createdAt: "2026-07-23T00:00:00.000Z" }), event("k2", "keep", { createdAt: "2026-07-22T00:00:00.000Z" }),
+      event("weak", "none-late", { attribution: "agent-observed", createdAt: "2026-07-21T00:00:00.000Z" }),
+      event("ignored", "other"), { id: "malformed" }, { nope: true },
+    ];
+    kv = mockKV([...rows].reverse(), [...feedback].reverse());
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    const result = await inventory();
+    expect(result.items.map((item) => item.skillId)).toEqual(["failed", "retire", "revise", "keep", "none-late", "none-empty"]);
+    expect(result).toMatchObject({ feedbackScannedCount: 11, validFeedbackCount: 9, malformedFeedbackCount: 2 });
+    expect(result.items.find((item) => item.skillId === "retire")!.evidenceCounts.total).toBe(2);
+    expect(result.summary).toEqual({
+      statusCounts: { active: 6, retired: 0, superseded: 0 },
+      recommendationCounts: { none: 3, keep_active: 1, review_for_revision: 1, review_for_retirement: 1 },
+      reasonCounts: {
+        repeated_user_confirmed_stale: 1,
+        user_confirmed_correction: 1,
+        stable_user_confirmed_success: 1,
+        insufficient_user_confirmed_evidence: 1,
+        no_applicable_feedback: 1,
+      },
+      failedItemCount: 1,
+    });
+    expect(kv.listCalls).toEqual([KV.skills, KV.skillFeedback]);
+    expectNoWrites();
+  });
+
+  it("keeps summaries and returned objects independent of filters, limits, metrics, and mutations", async () => {
+    enableReview();
+    const logical = [skill("active"), skill("retired", { status: "retired" }), skill("superseded", { status: "superseded" })];
+    const changedMetrics = logical.map((value) => ({
+      ...value,
+      name: "changed", triggerCondition: "changed", steps: ["changed"], expectedOutcome: "changed", antiPatterns: ["changed"], files: ["changed"], concepts: ["changed"],
+      usageCount: 999, successCount: 888, failureCount: 777, confidence: 0, strength: 0,
+      lastUsedAt: "2027-01-01T00:00:00.000Z", lastReinforcedAt: "2027-01-01T00:00:00.000Z", createdAt: "2027-01-01T00:00:00.000Z", updatedAt: "2027-01-01T00:00:00.000Z",
+      sourceProceduralMemoryIds: ["x"], sourceCandidateIds: ["x"], sourceObservationIds: ["x"], sourceSessionIds: ["x"],
+    }));
+    const feedback = [event("one", "active"), event("two", "active", { createdAt: "2026-07-22T00:00:00.000Z" })];
+    const firstBefore = JSON.stringify(logical);
+    kv = mockKV(logical, feedback);
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    const first = await inventory();
+    const filtered = await inventory({ recommendation: "keep_active", limit: 1 });
+    expect(filtered.summary).toEqual(first.summary);
+    kv = mockKV(changedMetrics, feedback);
+    registerSkillLifecycleReviewInventoryFunction(sdk as never, kv as never);
+    const second = await inventory();
+    expect(second).toEqual(first);
+    first.items[0]!.reasonCodes.push("no_applicable_feedback");
+    first.items[0]!.evidenceCounts.total = 999;
+    first.items[0]!.duplicateEventIds.push("changed");
+    first.summary.statusCounts.active = 999;
+    first.summary.recommendationCounts.none = 999;
+    first.summary.reasonCounts.no_applicable_feedback = 999;
+    first.duplicateSkillIds.push("changed");
+    expect(second).not.toEqual(first);
+    expect(JSON.stringify(logical)).toBe(firstBefore);
+    expectNoWrites();
+  });
+
+  it.each([{ limit: -1 }, { limit: Number.NaN }, { limit: Number.POSITIVE_INFINITY }, { limit: Number.NEGATIVE_INFINITY }])("rejects completed invalid limits before KV access: %o", async (data) => {
+    enableReview();
+    await expect(inventory(data)).resolves.toMatchObject({ reason: "invalid skill lifecycle review inventory input" });
+    expect(kv.listCalls).toEqual([]);
     expectNoWrites();
   });
 });
