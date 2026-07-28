@@ -981,6 +981,80 @@ export interface SkillLifecycleReviewInventoryResult {
   items: SkillLifecycleReviewInventoryItem[];
 }
 
+export type SkillLineageRelationState =
+  | "root"
+  | "resolved"
+  | "missing_target"
+  | "malformed_reference"
+  | "self_reference"
+  | "cycle";
+
+export type SkillLineageFindingCode =
+  | "malformed_supersedes"
+  | "self_supersedes"
+  | "cycle_detected"
+  | "missing_superseded_skill"
+  | "multiple_superseders";
+
+export type SkillLineageScopeRelation =
+  | "not_applicable"
+  | "same"
+  | "different";
+
+export interface SkillLineageDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  status?: unknown;
+  relationState?: unknown;
+  findingCode?: unknown;
+  scopeRelation?: unknown;
+  limit?: unknown;
+}
+
+export interface SkillLineageDiagnosticsItem {
+  skillId: string;
+  skillVersion: number;
+  currentStatus: AgentSkillStatus;
+  project?: string;
+  agentId?: string;
+  supersedes?: string;
+  relationState: SkillLineageRelationState;
+  scopeRelation: SkillLineageScopeRelation;
+  targetStatus?: AgentSkillStatus;
+  incomingSupersederIds: string[];
+  cycleMemberIds: string[];
+  findingCodes: SkillLineageFindingCode[];
+}
+
+export interface SkillLineageDiagnosticsSummary {
+  statusCounts: Record<AgentSkillStatus, number>;
+  relationStateCounts: Record<SkillLineageRelationState, number>;
+  findingCounts: Partial<Record<SkillLineageFindingCode, number>>;
+  declaredReferenceCount: number;
+  resolvedReferenceCount: number;
+  missingReferenceCount: number;
+  cycleComponentCount: number;
+  cycleSkillCount: number;
+  branchingTargetCount: number;
+}
+
+export interface SkillLineageDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  skillRowCount: number;
+  validSkillCount: number;
+  malformedSkillCount: number;
+  duplicateSkillIds: string[];
+  matchedCount: number;
+  returnedCount: number;
+  resultTruncated: boolean;
+  truncated: boolean;
+  summary: SkillLineageDiagnosticsSummary;
+  items: SkillLineageDiagnosticsItem[];
+}
+
 export interface TeamConfig {
   teamId: string;
   userId: string;
