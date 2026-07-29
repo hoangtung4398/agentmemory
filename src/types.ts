@@ -389,6 +389,108 @@ export interface SkillConfig {
   promotionMinEvidence: number;
 }
 
+export interface SkillRecallInput {
+  project?: string;
+  agentId?: string;
+  query?: string;
+  files?: string[];
+  concepts?: string[];
+  limit?: number;
+}
+
+export interface SkillAdvisory {
+  source: "skill-advisory";
+  skillId: string;
+  name: string;
+  triggerCondition: string;
+  steps: string[];
+  expectedOutcome: string;
+  antiPatterns: string[];
+  project?: string;
+  agentId?: string;
+  files: string[];
+  concepts: string[];
+  confidence: number;
+  strength: number;
+  score: number;
+  sourceProceduralMemoryIds: string[];
+}
+
+export interface SkillRecallResult {
+  success: boolean;
+  enabled: boolean;
+  scannedCount: number;
+  matchedCount: number;
+  returnedCount: number;
+  truncated: boolean;
+  privacySuppressedCount: number;
+  advisories: SkillAdvisory[];
+}
+
+export type SkillRecallInputParseResult =
+  | { success: true; input: SkillRecallInput }
+  | { success: false; error: string };
+
+export interface SkillRecallExplainInput {
+  skillId?: unknown;
+  project?: unknown;
+  agentId?: unknown;
+  query?: unknown;
+  files?: unknown;
+  concepts?: unknown;
+  limit?: unknown;
+}
+
+export type SkillRecallExplanationState =
+  | "malformed"
+  | "privacy_suppressed"
+  | "excluded"
+  | "matched_not_returned"
+  | "selected";
+
+export type SkillRecallExplanationReasonCode =
+  | "malformed_skill"
+  | "inactive"
+  | "below_min_confidence"
+  | "project_scope_mismatch"
+  | "agent_scope_mismatch"
+  | "privacy_suppressed"
+  | "no_context_match"
+  | "outside_limit"
+  | "selected";
+
+export interface SkillRecallScoreBreakdown {
+  projectScopeScore: number;
+  agentScopeScore: number;
+  conceptMatchCount: number;
+  conceptScore: number;
+  fileMatchCount: number;
+  fileScore: number;
+  queryTokenMatchCount: number;
+  queryScore: number;
+  totalScore: number;
+}
+
+export interface SkillRecallExplainResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  skillId?: string;
+  state?: SkillRecallExplanationState;
+  reasonCodes: SkillRecallExplanationReasonCode[];
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  privacySuppressedCount: number;
+  matchedCount: number;
+  effectiveLimit: number;
+  selected: boolean;
+  rank?: number;
+  scoreBreakdown?: SkillRecallScoreBreakdown;
+  advisory?: SkillAdvisory;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
