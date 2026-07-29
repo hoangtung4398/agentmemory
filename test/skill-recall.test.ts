@@ -3,6 +3,7 @@ import {
   normalizeSkillRecallInput,
   registerSkillRecallFunction,
 } from "../src/functions/skill-recall.js";
+import { evaluateSkillRecallPopulation } from "../src/functions/skill-recall-policy.js";
 import { registerMcpEndpoints } from "../src/mcp/server.js";
 import { getAllTools } from "../src/mcp/tools-registry.js";
 import { KV } from "../src/state/schema.js";
@@ -435,5 +436,19 @@ describe("AgentSkill advisory recall", () => {
     expect(mcpResult).toEqual(direct);
     expect(getAllTools().some((tool) => tool.name === "memory_skill_recall")).toBe(true);
     expect(kv.writes).toEqual([]);
+  });
+
+  it("preserves recall output through the shared pure policy without explanation calls", async () => {
+    enableRecall();
+    await kv.set(KV.skills, "skill_release", skill());
+    kv.resetTracking();
+    const input = { project: "/repo/a", agentId: "agent_a", query: "release" };
+
+    const direct = await recall(input);
+    const policy = evaluateSkillRecallPopulation([skill()], input, 0.7, 5);
+
+    expect(direct.advisories).toEqual(policy.advisories);
+    expect(sdk.triggers).not.toContain("mem::skill-recall-explain");
+    expect(kv.listScopes).toEqual([KV.skills]);
   });
 });

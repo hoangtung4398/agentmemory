@@ -86,6 +86,7 @@ import { registerSkillPromotionFunction } from "./functions/skill-promotion.js";
 import { registerSkillPromotionEligibilityFunction } from "./functions/skill-promotion-eligibility.js";
 import { registerSkillPromotionInventoryFunction } from "./functions/skill-promotion-inventory.js";
 import { registerSkillRecallFunction } from "./functions/skill-recall.js";
+import { registerSkillRecallExplainFunction } from "./functions/skill-recall-explain.js";
 import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSkillFeedbackDiagnosticsFunction } from "./functions/skill-feedback-diagnostics.js";
 import { registerSkillFeedbackReductionPlanFunction } from "./functions/skill-feedback-reduction-plan.js";
@@ -340,6 +341,7 @@ async function main() {
   registerSkillPromotionEligibilityFunction(sdk, kv);
   registerSkillPromotionInventoryFunction(sdk, kv);
   registerSkillRecallFunction(sdk, kv);
+  registerSkillRecallExplainFunction(sdk, kv);
   registerSkillFeedbackFunction(sdk, kv);
   registerSkillFeedbackDiagnosticsFunction(sdk, kv);
   registerSkillFeedbackReductionPlanFunction(sdk, kv);

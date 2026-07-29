@@ -472,6 +472,23 @@ relations. It has no status or version policy, performs no mutation, and has no
 REST or MCP exposure. Phase 4A3 is implemented by this milestone; Phase 4B
 remains future and separately authorized.
 
+### Read-Only Skill Recall Explanation
+
+Phase 5A adds the internal-only `mem::skill-recall-explain` evaluator. It uses
+the existing advisory recall gate and performs one `KV.skills` list only after
+validating its requested skill ID and recall context. It shares the pure recall
+policy with `mem::skill-recall`, so scope, privacy suppression, confidence,
+contextual applicability, score caps, ranking, limits, and advisory construction
+remain identical to normal recall.
+
+The explanation is read-only and returns whether the requested persisted skill
+is malformed, privacy-suppressed, excluded, selected, or matched outside the
+effective limit. Private explanations never return instruction text, steps,
+outcomes, anti-patterns, files, concepts, provenance, score, or advisory data.
+It has no REST, MCP, hook, scheduler, audit, or queue surface, and does not
+change recall behavior. Phase 4B lifecycle mutation remains future and
+separately authorized.
+
 ### Phase 3B Idempotency Contract
 
 The Phase 3B design contract is documented in
@@ -563,6 +580,10 @@ lifecycle check; PR13b does not invent or persist a new status.
     state.
 18. **Phase 4B - Review-driven retirement and supersession: future.** Lifecycle
     changes remain explicit and auditable.
+19. **Phase 5A - Read-only skill recall explanation: implemented by this
+    milestone.** It explains existing advisory recall selection without adding a
+    public surface or mutating persisted skills. Phase 4B remains future and
+    separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
