@@ -99,14 +99,13 @@ export function registerSkillRecallExplainFunction(sdk: ISdk, kv: StateKV): void
       const targets = evaluation.rowEvaluations.filter(
         (entry) => entry.normalizedSkillId === normalized.skillId,
       );
-      const validTargets = targets.filter((entry) => entry.valid);
       if (targets.length === 0) {
         return { ...result, success: false, reason: "skill not found", reasonCodes: [], selected: false };
       }
-      if (validTargets.length > 1) {
+      if (targets.length > 1) {
         return { ...result, success: false, reason: "duplicate skill id", reasonCodes: [], selected: false };
       }
-      const target = validTargets[0] ?? targets[0];
+      const target = targets[0]!;
       if (target.state === "malformed") {
         return {
           ...result,

@@ -9,17 +9,27 @@ const ORIGINAL: Record<string, string | undefined> = {};
 
 function mockSdk() {
   const functions = new Map<string, Function>();
+  const triggers: string[] = [];
   return {
+    triggers,
     registerFunction: (id: string, handler: Function) => functions.set(id, handler),
+    trigger: async (input: { function_id: string; payload: unknown }) => {
+      triggers.push(input.function_id);
+      const handler = functions.get(input.function_id);
+      if (!handler) throw new Error(`No function: ${input.function_id}`);
+      return handler(input.payload);
+    },
     getFunction: (id: string) => functions.get(id),
   };
 }
 
 function mockKV(rows: unknown[] = []) {
+  const getScopes: string[] = [];
   const listScopes: string[] = [];
   const writes: string[] = [];
   let failure = false;
   return {
+    getScopes,
     listScopes,
     writes,
     failList: () => { failure = true; },
@@ -28,7 +38,10 @@ function mockKV(rows: unknown[] = []) {
       if (failure) throw new Error("storage unavailable");
       return rows as T[];
     },
-    get: async () => null,
+    get: async <T>(scope: string): Promise<T | null> => {
+      getScopes.push(scope);
+      return null;
+    },
     set: async () => { writes.push("set"); },
     update: async () => { writes.push("update"); },
     delete: async () => { writes.push("delete"); },
@@ -132,12 +145,11 @@ describe("internal skill recall explanation", () => {
     expect(kv.writes).toEqual([]);
   });
 
-  it("reports missing, duplicate, malformed, and canonical exclusion reasons", async () => {
+  it("reports missing, malformed, and canonical exclusion reasons", async () => {
     enableRecall();
     kv = mockKV([
       { id: "broken", name: "broken" },
       skill(),
-      skill({ id: "skill_release", name: "Duplicate release" }),
       skill({ id: "inactive", status: "retired", confidence: 0.6, project: "/repo/b", agentId: "agent_b" }),
     ]);
     registerSkillRecallExplainFunction(sdk as never, kv as never);
@@ -145,15 +157,65 @@ describe("internal skill recall explanation", () => {
     await expect(explain({ skillId: "unknown" })).resolves.toMatchObject({ success: false, reason: "skill not found" });
     await expect(explain({ skillId: "broken" })).resolves.toMatchObject({
       state: "malformed", reasonCodes: ["malformed_skill"], selected: false,
-      scannedCount: 4, validCount: 3, malformedCount: 1, privacySuppressedCount: 0,
+      scannedCount: 3, validCount: 2, malformedCount: 1, privacySuppressedCount: 0,
     });
-    await expect(explain({ skillId: "skill_release" })).resolves.toMatchObject({ success: false, reason: "duplicate skill id" });
     await expect(explain({ skillId: "inactive", project: "/repo/a", agentId: "agent_a" })).resolves.toMatchObject({
       state: "excluded",
       reasonCodes: ["inactive", "below_min_confidence", "project_scope_mismatch", "agent_scope_mismatch"],
       selected: false,
     });
     expect(kv.writes).toEqual([]);
+  });
+
+  it("fails closed for every duplicate normalized target ID without leaking or using KV order", async () => {
+    enableRecall();
+    const privateMarker = "token=duplicate-private-marker-abcdefghijklmnopqrstuvwxyz123456";
+    const valid = skill();
+    const malformedSteps = { ...skill(), steps: undefined };
+    const malformedOutcome = { ...skill(), expectedOutcome: undefined };
+    const privateRow = skill({ name: privateMarker });
+
+    async function expectDuplicate(rows: unknown[]) {
+      const rowsBefore = JSON.parse(JSON.stringify(rows));
+      sdk = mockSdk();
+      kv = mockKV(rows);
+      registerSkillRecallExplainFunction(sdk as never, kv as never);
+
+      const result = await explain({ skillId: "skill_release", project: "/repo/a", agentId: "agent_a" });
+
+      expect(result).toMatchObject({
+        success: false,
+        reason: "duplicate skill id",
+        skillId: "skill_release",
+        reasonCodes: [],
+        selected: false,
+      });
+      expect(result).not.toHaveProperty("state");
+      expect(result).not.toHaveProperty("rank");
+      expect(result).not.toHaveProperty("scoreBreakdown");
+      expect(result).not.toHaveProperty("advisory");
+      expect(JSON.stringify(result)).not.toContain(privateMarker);
+      expect(rows).toEqual(rowsBefore);
+      expect(kv.listScopes).toEqual([KV.skills]);
+      expect(kv.getScopes).toEqual([]);
+      expect(kv.writes).toEqual([]);
+      expect(sdk.triggers).toEqual([]);
+      return result;
+    }
+
+    const validMalformed = await expectDuplicate([valid, malformedSteps]);
+    await expect(expectDuplicate([malformedSteps, valid])).resolves.toEqual(validMalformed);
+    await expect(expectDuplicate([valid, skill({ name: "Duplicate release" })])).resolves.toMatchObject({
+      reason: "duplicate skill id",
+    });
+    const malformedPair = await expectDuplicate([malformedSteps, malformedOutcome]);
+    await expect(expectDuplicate([malformedOutcome, malformedSteps])).resolves.toEqual(malformedPair);
+    await expect(expectDuplicate([valid, skill({ id: " skill_release " })])).resolves.toMatchObject({
+      reason: "duplicate skill id",
+    });
+    await expect(expectDuplicate([privateRow, valid])).resolves.toMatchObject({
+      reason: "duplicate skill id",
+    });
   });
 
   it("reports no-context and private rows without leaking private instructions", async () => {
