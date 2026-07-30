@@ -551,6 +551,63 @@ export interface SkillRecallDiagnosticsResult {
   items: SkillRecallDiagnosticsItem[];
 }
 
+export interface SkillContextExplainInput {
+  project?: unknown;
+  agentId?: unknown;
+  query?: unknown;
+  files?: unknown;
+  concepts?: unknown;
+  limit?: unknown;
+  tokenBudget?: unknown;
+}
+
+export type SkillContextPackingState = "packed" | "omitted_budget";
+
+export type SkillContextPackingReasonCode = "packed" | "exceeds_token_budget";
+
+export interface SkillContextPackingDecision {
+  skillId: string;
+  recallRank: number;
+  state: SkillContextPackingState;
+  reasonCodes: SkillContextPackingReasonCode[];
+  renderedAdvisoryTokens: number;
+  candidateSectionTokens: number;
+  packedPosition?: number;
+}
+
+export interface SkillAdvisoryPackingEvaluation {
+  content: string | null;
+  tokens: number;
+  sectionOverheadTokens: number;
+  decisions: SkillContextPackingDecision[];
+}
+
+export interface SkillContextExplainResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  privacySuppressedCount: number;
+  privateProtectedCount: number;
+  matchedCount: number;
+  recallReturnedCount: number;
+  recallTruncated: boolean;
+  effectiveRecallLimit: number;
+  configuredTokenBudget: number;
+  requestedTokenBudget?: number;
+  effectiveTokenBudget: number;
+  sectionOverheadTokens: number;
+  packedCount: number;
+  omittedCount: number;
+  packedTokens: number;
+  sectionCreated: boolean;
+  duplicateSkillIdCount: number;
+  items: SkillContextPackingDecision[];
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;

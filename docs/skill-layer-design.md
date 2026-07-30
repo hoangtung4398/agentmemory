@@ -606,6 +606,16 @@ lifecycle check; PR13b does not invent or persist a new status.
     this milestone.** It exposes safe aggregate and bounded item diagnostics
     internally without changing recall behavior or mutating persisted skills.
     Phase 4B remains future and separately authorized.
+21. **Phase 5C - Read-only skill context packing explanation: implemented by
+    this milestone.** The internal-only `mem::skill-context-explain` function
+    reuses the existing context gate, performs one `KV.skills` list, shares the
+    recall policy, and uses the same pure packing evaluator as
+    `packSkillAdvisories`. It returns only safe per-advisory budget decisions;
+    it never returns advisory content, mutates state, or adds a public surface.
+    The refactored packer remains byte-for-byte compatible, private instruction
+    content is completely suppressed, duplicate normalized skill IDs fail
+    closed, and `mem::context` remains unchanged. Phase 4B remains future and
+    separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
