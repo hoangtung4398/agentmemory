@@ -32,6 +32,7 @@ type RecallableSkill = {
 
 export interface SkillRecallRowEvaluation {
   normalizedSkillId?: string;
+  containsPrivateData: boolean;
   valid: boolean;
   state: "malformed" | "privacy_suppressed" | "excluded" | "matched";
   reasonCodes: SkillRecallExplanationReasonCode[];
@@ -318,6 +319,7 @@ export function evaluateSkillRecallPopulation(
       privacySuppressedCount += 1;
       rowEvaluations.push({
         ...(normalizedSkillId === undefined ? {} : { normalizedSkillId }),
+        containsPrivateData,
         valid: skill !== null,
         state: "privacy_suppressed",
         reasonCodes: ["privacy_suppressed"],
@@ -328,6 +330,7 @@ export function evaluateSkillRecallPopulation(
     if (!skill) {
       rowEvaluations.push({
         ...(normalizedSkillId === undefined ? {} : { normalizedSkillId }),
+        containsPrivateData,
         valid: false,
         state: "malformed",
         reasonCodes: ["malformed_skill"],
@@ -338,7 +341,7 @@ export function evaluateSkillRecallPopulation(
 
     const reasons = exclusionReasons(skill, input, recallMinConfidence);
     if (reasons.length > 0) {
-      rowEvaluations.push({ normalizedSkillId: skill.id, valid: true, state: "excluded", reasonCodes: reasons, selected: false });
+      rowEvaluations.push({ normalizedSkillId: skill.id, containsPrivateData, valid: true, state: "excluded", reasonCodes: reasons, selected: false });
       continue;
     }
 
@@ -346,6 +349,7 @@ export function evaluateSkillRecallPopulation(
     if (contextual && !applicable) {
       rowEvaluations.push({
         normalizedSkillId: skill.id,
+        containsPrivateData,
         valid: true,
         state: "excluded",
         reasonCodes: ["no_context_match"],
@@ -358,6 +362,7 @@ export function evaluateSkillRecallPopulation(
     const advisory = toAdvisory(skill, breakdown.totalScore);
     const evaluation: SkillRecallRowEvaluation = {
       normalizedSkillId: skill.id,
+      containsPrivateData,
       valid: true,
       state: "matched",
       reasonCodes: [],

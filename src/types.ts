@@ -491,6 +491,66 @@ export interface SkillRecallExplainResult {
   advisory?: SkillAdvisory;
 }
 
+export type SkillRecallDiagnosticsState =
+  | "malformed"
+  | "excluded"
+  | "matched_not_returned"
+  | "selected";
+
+export type SkillRecallDiagnosticsReasonCode = Exclude<
+  SkillRecallExplanationReasonCode,
+  "privacy_suppressed"
+>;
+
+export interface SkillRecallDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  query?: unknown;
+  files?: unknown;
+  concepts?: unknown;
+  limit?: unknown;
+  state?: unknown;
+  reasonCode?: unknown;
+  itemLimit?: unknown;
+}
+
+export interface SkillRecallDiagnosticsItem {
+  skillId: string;
+  state: SkillRecallDiagnosticsState;
+  reasonCodes: SkillRecallDiagnosticsReasonCode[];
+  selected: boolean;
+  rank?: number;
+  scoreBreakdown?: SkillRecallScoreBreakdown;
+}
+
+export interface SkillRecallDiagnosticsSummary {
+  stateCounts: Record<SkillRecallDiagnosticsState, number>;
+  reasonCounts: Partial<Record<SkillRecallDiagnosticsReasonCode, number>>;
+}
+
+export interface SkillRecallDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  privacySuppressedCount: number;
+  privateProtectedCount: number;
+  anonymousMalformedCount: number;
+  matchedCount: number;
+  recallReturnedCount: number;
+  effectiveLimit: number;
+  recallTruncated: boolean;
+  duplicateSkillIdCount: number;
+  diagnosticMatchedCount: number;
+  diagnosticReturnedCount: number;
+  diagnosticTruncated: boolean;
+  summary: SkillRecallDiagnosticsSummary;
+  items: SkillRecallDiagnosticsItem[];
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
