@@ -1,4 +1,9 @@
-import type { SkillAdvisory, SkillRecallResult } from "./skill-recall.js";
+import type {
+  SkillAdvisory,
+  SkillAdvisoryPackingEvaluation,
+  SkillContextPackingDecision,
+  SkillRecallResult,
+} from "../types.js";
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3);
@@ -94,13 +99,48 @@ export function packSkillAdvisories(
   advisories: SkillAdvisory[],
   tokenBudget: number,
 ): { content: string; tokens: number } | null {
+  const evaluation = evaluateSkillAdvisoryPacking(advisories, tokenBudget);
+  return evaluation.content === null ? null : {
+    content: evaluation.content,
+    tokens: evaluation.tokens,
+  };
+}
+
+export function evaluateSkillAdvisoryPacking(
+  advisories: readonly SkillAdvisory[],
+  tokenBudget: number,
+): SkillAdvisoryPackingEvaluation {
   const selected: string[] = [];
-  for (const advisory of advisories) {
+  const decisions: SkillContextPackingDecision[] = [];
+  for (const [index, advisory] of advisories.entries()) {
     const rendered = renderSkillAdvisory(advisory);
     const candidate = renderSection([...selected, rendered]);
-    if (estimateTokens(candidate) <= tokenBudget) selected.push(rendered);
+    const candidateSectionTokens = estimateTokens(candidate);
+    const packed = candidateSectionTokens <= tokenBudget;
+    if (packed) selected.push(rendered);
+    decisions.push({
+      skillId: advisory.skillId,
+      recallRank: index + 1,
+      state: packed ? "packed" : "omitted_budget",
+      reasonCodes: [packed ? "packed" : "exceeds_token_budget"],
+      renderedAdvisoryTokens: estimateTokens(rendered),
+      candidateSectionTokens,
+      ...(packed ? { packedPosition: selected.length } : {}),
+    });
   }
-  if (selected.length === 0) return null;
+  if (selected.length === 0) {
+    return {
+      content: null,
+      tokens: 0,
+      sectionOverheadTokens: estimateTokens(renderSection([])),
+      decisions,
+    };
+  }
   const content = renderSection(selected);
-  return { content, tokens: estimateTokens(content) };
+  return {
+    content,
+    tokens: estimateTokens(content),
+    sectionOverheadTokens: estimateTokens(renderSection([])),
+    decisions,
+  };
 }
