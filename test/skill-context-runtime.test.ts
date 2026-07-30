@@ -157,14 +157,23 @@ describe("skill context runtime handoff explanation", () => {
 
   it("builds fresh exact recall requests without forwarding caller-owned data", () => {
     const input = { project: " /repo ", agentId: " agent ", recallLimit: 3 };
+    const beforeInput = structuredClone(input);
     const first = buildSkillContextRecallRequest(input);
     const second = buildSkillContextRecallRequest(input);
     expect(first).toEqual({ function_id: "mem::skill-recall", payload: { project: " /repo ", agentId: " agent ", limit: 3 } });
     expect(second).toEqual(first);
     expect(second).not.toBe(first);
     expect(second.payload).not.toBe(first.payload);
-    first.payload.project = "changed";
-    expect(buildSkillContextRecallRequest(input).payload.project).toBe(" /repo ");
+    const mutableFirst = first as unknown as { function_id: string; payload: { project: string; agentId?: string; limit: number } };
+    mutableFirst.function_id = "changed";
+    mutableFirst.payload.project = "changed-project";
+    mutableFirst.payload.agentId = "changed-agent";
+    mutableFirst.payload.limit = 99;
+    expect(input).toEqual(beforeInput);
+    expect(buildSkillContextRecallRequest(input)).toEqual({
+      function_id: "mem::skill-recall",
+      payload: { project: " /repo ", agentId: " agent ", limit: 3 },
+    });
     expect(buildSkillContextRecallRequest({ project: "/repo", agentId: "   ", recallLimit: 10 }))
       .toEqual({ function_id: "mem::skill-recall", payload: { project: "/repo", limit: 10 } });
     expect(buildSkillContextRecallRequest({ project: "/repo", recallLimit: 1 }))
@@ -217,7 +226,10 @@ describe("skill context runtime handoff explanation", () => {
 
   it("rejects the complete strict numeric input matrix before triggering", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig());
-    const invalidNumbers = [undefined, null, "1", true, {}, [], Number.NaN, Infinity, -Infinity, 1.5, -1, Number.MAX_SAFE_INTEGER + 1];
+    const invalidNumbers = [
+      undefined, null, "1", true, false, {}, [], Number.NaN, Infinity, -Infinity, 1.5, -1,
+      Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1,
+    ];
     const invalid = [
       ...invalidNumbers.map((overallBudget) => ({ project: "/repo", overallBudget, usedTokens: 0, selectedBlockCount: 0 })),
       ...invalidNumbers.map((usedTokens) => ({ project: "/repo", overallBudget: 1, usedTokens, selectedBlockCount: 0 })),
@@ -231,8 +243,8 @@ describe("skill context runtime handoff explanation", () => {
       await expect(explain(input)).resolves.toMatchObject({
         success: false, state: "failed", reasonCodes: ["invalid_input"], recallAttempted: false,
       });
+      expect(sdk.requests).toEqual([]);
     }
-    expect(sdk.requests).toEqual([]);
   });
 
   it("uses exactly one normalized recall trigger and never exposes recall content", async () => {
@@ -265,21 +277,64 @@ describe("skill context runtime handoff explanation", () => {
       expect(result).toMatchObject({ success: false, state: "failed", reasonCodes: ["recall_trigger_failure"], recallAttempted: true, recallTriggerSucceeded: false, recallResultParsed: false });
       expect(JSON.stringify(result)).not.toContain("secret");
     }
-    for (const raw of [
-      null,
-      [],
-      false,
-      { success: false, enabled: true, advisories: [] },
-      { success: true, enabled: false, advisories: [] },
-      { success: true, enabled: true },
-      { success: true, enabled: true, advisories: "not-an-array" },
-      { success: true, enabled: true, advisories: [{}] },
-      { success: true, enabled: true, advisories: [advisory(), {}] },
-      { success: true, enabled: true, advisories: [advisory({ confidence: Number.NaN })] },
-    ]) {
+    const marker = "malformed-runtime-private-marker";
+    const invalidAdvisories: Array<[string, unknown]> = [
+      ["null recall", null],
+      ["array recall", []],
+      ["false recall", false],
+      ["disabled result", { success: false, enabled: true, advisories: [] }],
+      ["disabled flag", { success: true, enabled: false, advisories: [] }],
+      ["missing advisories", { success: true, enabled: true }],
+      ["null advisories", { success: true, enabled: true, advisories: null }],
+      ["object advisories", { success: true, enabled: true, advisories: {} }],
+      ["string advisories", { success: true, enabled: true, advisories: "not-an-array" }],
+      ["empty object advisory", { success: true, enabled: true, advisories: [{}] }],
+      ["mixed advisory", { success: true, enabled: true, advisories: [advisory(), {}] }],
+      ["confidence nan", { success: true, enabled: true, error: marker, advisories: [advisory({ confidence: Number.NaN })] }],
+      ["confidence infinity", { success: true, enabled: true, advisories: [advisory({ confidence: Infinity })] }],
+      ["confidence negative infinity", { success: true, enabled: true, advisories: [advisory({ confidence: -Infinity })] }],
+      ["confidence below range", { success: true, enabled: true, advisories: [advisory({ confidence: -0.01 })] }],
+      ["confidence above range", { success: true, enabled: true, advisories: [advisory({ confidence: 1.01 })] }],
+      ["strength nan", { success: true, enabled: true, advisories: [advisory({ strength: Number.NaN })] }],
+      ["strength infinity", { success: true, enabled: true, advisories: [advisory({ strength: Infinity })] }],
+      ["strength negative infinity", { success: true, enabled: true, advisories: [advisory({ strength: -Infinity })] }],
+      ["strength below range", { success: true, enabled: true, advisories: [advisory({ strength: -0.01 })] }],
+      ["strength above range", { success: true, enabled: true, advisories: [advisory({ strength: 1.01 })] }],
+      ["score nan", { success: true, enabled: true, advisories: [advisory({ score: Number.NaN })] }],
+      ["score infinity", { success: true, enabled: true, advisories: [advisory({ score: Infinity })] }],
+      ["score negative infinity", { success: true, enabled: true, advisories: [advisory({ score: -Infinity })] }],
+      ["blank skill id", { success: true, enabled: true, advisories: [advisory({ skillId: "  " })] }],
+      ["blank name", { success: true, enabled: true, advisories: [advisory({ name: "  " })] }],
+      ["blank trigger", { success: true, enabled: true, advisories: [advisory({ triggerCondition: "  " })] }],
+      ["empty steps", { success: true, enabled: true, advisories: [advisory({ steps: [] })] }],
+      ["blank step", { success: true, enabled: true, advisories: [advisory({ steps: ["  "] })] }],
+      ["blank expected outcome", { success: true, enabled: true, advisories: [advisory({ expectedOutcome: "  " })] }],
+      ["anti patterns object", { success: true, enabled: true, advisories: [advisory({ antiPatterns: {} as never })] }],
+      ["files object", { success: true, enabled: true, advisories: [advisory({ files: {} as never })] }],
+      ["concepts object", { success: true, enabled: true, advisories: [advisory({ concepts: {} as never })] }],
+      ["source procedural ids object", { success: true, enabled: true, advisories: [advisory({ sourceProceduralMemoryIds: {} as never })] }],
+    ];
+    for (const [label, raw] of invalidAdvisories) {
       sdk.setTrigger(async () => raw);
-      await expect(explain({ project: "/repo", overallBudget: 1000, usedTokens: 0, selectedBlockCount: 0 }))
-        .resolves.toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_recall_result"], recallTriggerSucceeded: true, recallResultParsed: false });
+      const result = await explain({ project: "/repo", overallBudget: 1000, usedTokens: 0, selectedBlockCount: 0 });
+      expect(result, label).toMatchObject({
+        success: false,
+        state: "failed",
+        reason: "invalid skill recall result",
+        reasonCodes: ["invalid_recall_result"],
+        recallAttempted: true,
+        recallTriggerSucceeded: true,
+        recallResultParsed: false,
+        parsedAdvisoryCount: 0,
+        packedCount: 0,
+        omittedCount: 0,
+        packedTokens: 0,
+        sectionCreated: false,
+        sectionAdmitted: false,
+        projectedUsedTokens: 0,
+        projectedBlockCount: 0,
+      });
+      expect(JSON.stringify(result), label).not.toContain(marker);
     }
   });
 
@@ -319,17 +374,43 @@ describe("skill context runtime handoff explanation", () => {
       advisories: exactAdvisories,
       budget: evaluateSkillAdvisoryPacking(exactAdvisories, 10_000).tokens,
     });
+    cases.push({
+      label: "one token below exact boundary",
+      advisories: exactAdvisories,
+      budget: evaluateSkillAdvisoryPacking(exactAdvisories, 10_000).tokens - 1,
+    });
     for (const current of cases) {
       loadSkillConfig.mockReturnValue(enabledConfig(current.budget));
       sdk.setTrigger(async () => ({ success: true, enabled: true, advisories: current.advisories }));
       const result = await explain({ project: "/repo", overallBudget: 10_000, usedTokens: 0, selectedBlockCount: 0 });
       const packing = evaluateSkillAdvisoryPacking(current.advisories, current.budget);
-      expect({ packedCount: result.packedCount, omittedCount: result.omittedCount, packedTokens: result.packedTokens, sectionCreated: result.sectionCreated }, current.label)
+      const admission = evaluateSkillContextAdmission({
+        enabled: true,
+        overallBudget: 10_000,
+        usedTokens: 0,
+        selectedBlockCount: 0,
+        configuredSkillTokenBudget: current.budget,
+        ...(packing.content ? { packedSectionTokens: packing.tokens } : {}),
+      });
+      expect({
+        parsedAdvisoryCount: result.parsedAdvisoryCount,
+        packedCount: result.packedCount,
+        omittedCount: result.omittedCount,
+        packedTokens: result.packedTokens,
+        sectionCreated: result.sectionCreated,
+        sectionAdmitted: result.sectionAdmitted,
+        projectedUsedTokens: result.projectedUsedTokens,
+        projectedBlockCount: result.projectedBlockCount,
+      }, current.label)
         .toEqual({
+          parsedAdvisoryCount: current.advisories.length,
           packedCount: packing.decisions.filter((item) => item.state === "packed").length,
           omittedCount: packing.decisions.filter((item) => item.state === "omitted_budget").length,
           packedTokens: packing.tokens,
           sectionCreated: packing.content !== null,
+          sectionAdmitted: packing.content !== null && admission.sectionAdmitted,
+          projectedUsedTokens: packing.content ? admission.projectedUsedTokens : 0,
+          projectedBlockCount: packing.content ? admission.projectedBlockCount : 0,
         });
     }
   });
@@ -401,6 +482,9 @@ describe("skill context runtime handoff explanation", () => {
       step: "step-private-marker",
       outcome: "outcome-private-marker",
       antiPattern: "anti-private-marker",
+      file: "file-private-marker",
+      concept: "concept-private-marker",
+      sourceProceduralMemoryId: "source-procedural-private-marker",
       error: "error-private-marker",
     };
     const input = {
@@ -421,6 +505,9 @@ describe("skill context runtime handoff explanation", () => {
         steps: [markers.step],
         expectedOutcome: markers.outcome,
         antiPatterns: [markers.antiPattern],
+        files: [markers.file],
+        concepts: [markers.concept],
+        sourceProceduralMemoryIds: [markers.sourceProceduralMemoryId],
       })],
     };
     const beforeInput = structuredClone(input);
@@ -430,6 +517,11 @@ describe("skill context runtime handoff explanation", () => {
     expect(input).toEqual(beforeInput);
     expect(raw).toEqual(beforeRaw);
     for (const marker of Object.values(markers)) expect(JSON.stringify(result)).not.toContain(marker);
+    for (const key of [
+      "project", "agentId", "request", "payload", "advisories", "skillId", "name", "triggerCondition",
+      "steps", "expectedOutcome", "antiPatterns", "files", "concepts", "confidence", "strength", "score",
+      "sourceProceduralMemoryIds", "error",
+    ]) expect(result).not.toHaveProperty(key);
     const mutable = result as unknown as Record<string, unknown>;
     mutable.reasonCodes = ["invalid_input"];
     mutable.state = "failed";
@@ -466,5 +558,86 @@ describe("skill context runtime handoff explanation", () => {
     sdk.setTrigger(async () => { throw new Error(markers.error); });
     const failure = await explain(input);
     expect(JSON.stringify(failure)).not.toContain(markers.error);
+  });
+
+  it("does not mutate independent fixtures for every runtime outcome", async () => {
+    const input = () => ({ project: "/repo", agentId: "agent", overallBudget: 1000, usedTokens: 0, selectedBlockCount: 0 });
+    const nestedAdvisory = (overrides: Partial<SkillAdvisory> = {}) => advisory({
+      steps: ["nested step"],
+      antiPatterns: ["nested anti-pattern"],
+      files: ["nested-file.ts"],
+      concepts: ["nested concept"],
+      sourceProceduralMemoryIds: ["nested-procedural-id"],
+      ...overrides,
+    });
+    const cases: Array<{
+      label: string;
+      config: ReturnType<typeof enabledConfig>;
+      expectedState: SkillContextRuntimeExplainResult["state"];
+      raw?: () => unknown;
+      thrown?: () => unknown;
+    }> = [
+      {
+        label: "admitted",
+        config: enabledConfig(1000),
+        expectedState: "admitted",
+        raw: () => ({ success: true, enabled: true, advisories: [nestedAdvisory()] }),
+      },
+      {
+        label: "recall empty",
+        config: enabledConfig(1000),
+        expectedState: "recall_empty",
+        raw: () => ({ success: true, enabled: true, advisories: [] }),
+      },
+      {
+        label: "packing empty",
+        config: enabledConfig(64),
+        expectedState: "packing_empty",
+        raw: () => ({ success: true, enabled: true, advisories: [nestedAdvisory({ steps: ["x".repeat(4000)] })] }),
+      },
+      {
+        label: "invalid recall result",
+        config: enabledConfig(1000),
+        expectedState: "failed",
+        raw: () => ({ success: true, enabled: true, advisories: [nestedAdvisory({ confidence: Number.NaN })] }),
+      },
+      {
+        label: "trigger failure",
+        config: enabledConfig(1000),
+        expectedState: "failed",
+        thrown: () => ({ message: "nested thrown marker", nested: { reason: "unchanged" } }),
+      },
+    ];
+    for (const current of cases) {
+      loadSkillConfig.mockReturnValue(current.config);
+      const currentInput = input();
+      const beforeInput = structuredClone(currentInput);
+      if (current.raw) {
+        const raw = current.raw();
+        const beforeRaw = structuredClone(raw);
+        sdk.setTrigger(async () => raw);
+        const result = await explain(currentInput);
+        expect(result.state, current.label).toBe(current.expectedState);
+        expect(currentInput, current.label).toEqual(beforeInput);
+        expect(raw, current.label).toEqual(beforeRaw);
+        continue;
+      }
+      const thrown = current.thrown!();
+      const beforeThrown = structuredClone(thrown);
+      sdk.setTrigger(async () => { throw thrown; });
+      const result = await explain(currentInput);
+      expect(result.state, current.label).toBe(current.expectedState);
+      expect(currentInput, current.label).toEqual(beforeInput);
+      expect(thrown, current.label).toEqual(beforeThrown);
+    }
+
+    loadSkillConfig.mockReturnValue(enabledConfig(1000));
+    const noBudgetInput = { ...input(), overallBudget: 10, usedTokens: 10 };
+    const beforeNoBudgetInput = structuredClone(noBudgetInput);
+    const requestCount = sdk.requests.length;
+    const noBudget = await explain(noBudgetInput);
+    expect(noBudget.state).toBe("skipped_no_budget");
+    expect(noBudgetInput).toEqual(beforeNoBudgetInput);
+    expect(sdk.requests).toHaveLength(requestCount);
   });
 });
