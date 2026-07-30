@@ -489,6 +489,24 @@ It has no REST, MCP, hook, scheduler, audit, or queue surface, and does not
 change recall behavior. Phase 4B lifecycle mutation remains future and
 separately authorized.
 
+### Read-Only Skill Recall Population Diagnostics
+
+Phase 5B adds the internal-only `mem::skill-recall-diagnostics` function. It
+reuses the same advisory recall gate and shared pure policy as recall and
+single-skill explanation, then performs exactly one `KV.skills` list after
+validating its recall context and diagnostic filters. It returns recall-
+equivalent aggregate counts, safe four-state and reason summaries, and a
+bounded deterministic list of selected, outside-limit, excluded, or malformed
+skills.
+
+Every private-content row is counted in `privateProtectedCount` but is omitted
+from diagnostic items and their summaries. Diagnostics fail closed when any
+normalized persisted skill ID is duplicated, including malformed, private, and
+trim-normalized rows. The function has no writes, audit, queue, REST, MCP, CLI,
+hook, viewer, scheduler, or background surface. It does not alter ordinary
+recall or Phase 5A explanation behavior. Phase 4B remains future and separately
+authorized.
+
 ### Phase 3B Idempotency Contract
 
 The Phase 3B design contract is documented in
@@ -584,6 +602,10 @@ lifecycle check; PR13b does not invent or persist a new status.
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
     separately authorized.
+20. **Phase 5B - Read-only skill recall population diagnostics: implemented by
+    this milestone.** It exposes safe aggregate and bounded item diagnostics
+    internally without changing recall behavior or mutating persisted skills.
+    Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
