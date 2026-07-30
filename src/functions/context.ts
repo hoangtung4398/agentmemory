@@ -14,6 +14,7 @@ import { recordAccessBatch } from "./access-tracker.js";
 import { logger } from "../logger.js";
 import { loadSkillConfig } from "../config.js";
 import { packSkillAdvisories, parseSkillAdvisories } from "./skill-context.js";
+import { evaluateSkillContextAdmission } from "./skill-context-admission.js";
 import {
   isSlotsEnabled,
   listPinnedSlots,
@@ -217,14 +218,14 @@ export function registerContextFunction(
       }
 
       const skillConfig = loadSkillConfig();
-      if (skillConfig.contextEnabled) {
-        const separatorTokens = selected.length > 0 ? estimateTokens("\n\n") : 0;
-        const remainingOverallBudget = budget - usedTokens - separatorTokens;
-        const skillBudget = Math.min(
-          skillConfig.contextTokenBudget,
-          remainingOverallBudget,
-        );
-        if (skillBudget > 0) {
+      const skillAdmission = evaluateSkillContextAdmission({
+        enabled: skillConfig.contextEnabled,
+        overallBudget: budget,
+        usedTokens,
+        selectedBlockCount: selected.length,
+        configuredSkillTokenBudget: skillConfig.contextTokenBudget,
+      });
+      if (skillAdmission.shouldAttemptRecall) {
           const currentSession = allSessions.find((session) => session.id === data.sessionId);
           try {
             const skillRecallResult = await sdk.trigger({
@@ -236,15 +237,22 @@ export function registerContextFunction(
               },
             });
             const advisories = parseSkillAdvisories(skillRecallResult);
-            const skillSection = advisories && packSkillAdvisories(advisories, skillBudget);
-            if (skillSection && usedTokens + separatorTokens + skillSection.tokens <= budget) {
+            const skillSection = advisories && packSkillAdvisories(advisories, skillAdmission.effectiveSkillTokenBudget);
+            const sectionAdmission = evaluateSkillContextAdmission({
+              enabled: skillConfig.contextEnabled,
+              overallBudget: budget,
+              usedTokens,
+              selectedBlockCount: selected.length,
+              configuredSkillTokenBudget: skillConfig.contextTokenBudget,
+              packedSectionTokens: skillSection?.tokens,
+            });
+            if (skillSection && sectionAdmission.sectionAdmitted) {
               selected.push(skillSection.content);
-              usedTokens += separatorTokens + skillSection.tokens;
+              usedTokens = sectionAdmission.projectedUsedTokens;
             }
           } catch {
             logger.warn("Skill advisory context recall failed", { project: data.project });
           }
-        }
       }
 
       if (accessedIds.length > 0) {

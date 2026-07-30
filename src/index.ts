@@ -89,6 +89,7 @@ import { registerSkillRecallFunction } from "./functions/skill-recall.js";
 import { registerSkillRecallExplainFunction } from "./functions/skill-recall-explain.js";
 import { registerSkillRecallDiagnosticsFunction } from "./functions/skill-recall-diagnostics.js";
 import { registerSkillContextExplainFunction } from "./functions/skill-context-explain.js";
+import { registerSkillContextAdmissionExplainFunction } from "./functions/skill-context-admission.js";
 import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSkillFeedbackDiagnosticsFunction } from "./functions/skill-feedback-diagnostics.js";
 import { registerSkillFeedbackReductionPlanFunction } from "./functions/skill-feedback-reduction-plan.js";
@@ -346,6 +347,7 @@ async function main() {
   registerSkillRecallExplainFunction(sdk, kv);
   registerSkillRecallDiagnosticsFunction(sdk, kv);
   registerSkillContextExplainFunction(sdk, kv);
+  registerSkillContextAdmissionExplainFunction(sdk, kv);
   registerSkillFeedbackFunction(sdk, kv);
   registerSkillFeedbackDiagnosticsFunction(sdk, kv);
   registerSkillFeedbackReductionPlanFunction(sdk, kv);
