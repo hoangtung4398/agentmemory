@@ -685,6 +685,62 @@ export interface SkillContextAdmissionExplainResult {
   projectedBlockCount: number;
 }
 
+export interface SkillContextRuntimeExplainInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export type SkillContextRuntimeState =
+  | "disabled"
+  | "failed"
+  | "skipped_no_budget"
+  | "recall_empty"
+  | "packing_empty"
+  | "admitted"
+  | "rejected_outer_budget";
+
+export type SkillContextRuntimeReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "recall_trigger_failure"
+  | "invalid_recall_result"
+  | "no_remaining_budget"
+  | "no_recalled_advisories"
+  | "no_advisory_fits"
+  | "section_admitted"
+  | "section_exceeds_outer_budget";
+
+export interface SkillContextRuntimeExplainResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  state: SkillContextRuntimeState;
+  reasonCodes: SkillContextRuntimeReasonCode[];
+  overallBudget: number;
+  usedTokensBeforeSkill: number;
+  selectedBlockCountBeforeSkill: number;
+  configuredSkillTokenBudget: number;
+  separatorTokens: number;
+  remainingOverallBudget: number;
+  effectiveSkillTokenBudget: number;
+  effectiveRecallLimit: number;
+  recallAttempted: boolean;
+  recallTriggerSucceeded: boolean;
+  recallResultParsed: boolean;
+  parsedAdvisoryCount: number;
+  packedCount: number;
+  omittedCount: number;
+  packedTokens: number;
+  sectionCreated: boolean;
+  sectionAdmitted: boolean;
+  projectedUsedTokens: number;
+  projectedBlockCount: number;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
