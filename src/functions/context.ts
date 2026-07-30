@@ -15,6 +15,7 @@ import { logger } from "../logger.js";
 import { loadSkillConfig } from "../config.js";
 import { packSkillAdvisories, parseSkillAdvisories } from "./skill-context.js";
 import { evaluateSkillContextAdmission } from "./skill-context-admission.js";
+import { buildSkillContextRecallRequest } from "./skill-context-runtime.js";
 import {
   isSlotsEnabled,
   listPinnedSlots,
@@ -228,14 +229,11 @@ export function registerContextFunction(
       if (skillAdmission.shouldAttemptRecall) {
           const currentSession = allSessions.find((session) => session.id === data.sessionId);
           try {
-            const skillRecallResult = await sdk.trigger({
-              function_id: "mem::skill-recall",
-              payload: {
-                project: data.project,
-                ...(currentSession?.agentId ? { agentId: currentSession.agentId } : {}),
-                limit: skillConfig.recallLimit,
-              },
-            });
+            const skillRecallResult = await sdk.trigger(buildSkillContextRecallRequest({
+              project: data.project,
+              ...(currentSession?.agentId ? { agentId: currentSession.agentId } : {}),
+              recallLimit: skillConfig.recallLimit,
+            }));
             const advisories = parseSkillAdvisories(skillRecallResult);
             const skillSection = advisories && packSkillAdvisories(advisories, skillAdmission.effectiveSkillTokenBudget);
             const sectionAdmission = evaluateSkillContextAdmission({

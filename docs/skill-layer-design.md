@@ -627,6 +627,18 @@ lifecycle check; PR13b does not invent or persist a new status.
     content remains suppressed, duplicate normalized skill IDs fail closed, no
     public surface or state mutation is introduced, and Phase 4B remains future
     and separately authorized.
+23. **Phase 5E - Read-only skill context runtime handoff explanation:
+    implemented by this milestone.** The internal-only
+    `mem::skill-context-runtime-explain` function explains the live
+    `mem::context` handoff from outer-budget admission through one internal
+    `mem::skill-recall` trigger, result parsing, packing, and final admission.
+    It and `mem::context` share a pure recall-request builder, preserving the
+    runtime request shape. The no-budget path performs no trigger; the
+    positive-budget path performs exactly one trigger and the explainer never
+    reads KV directly. It reuses existing parser, packing, and admission
+    policies, returns aggregate-only results, exposes no public surface, and
+    writes no state. It does not diagnose physical duplicate rows hidden behind
+    recall. Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
