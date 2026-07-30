@@ -616,6 +616,17 @@ lifecycle check; PR13b does not invent or persist a new status.
     content is completely suppressed, duplicate normalized skill IDs fail
     closed, and `mem::context` remains unchanged. Phase 4B remains future and
     separately authorized.
+22. **Phase 5D - Read-only skill context admission explanation: implemented by
+    this milestone.** The internal-only
+    `mem::skill-context-admission-explain` function reuses the existing context
+    gate and a shared pure admission evaluator with `mem::context`. It explains
+    outer-budget admission using aggregate-only values, performs zero reads when
+    no skill budget remains and one `KV.skills` list otherwise, and reuses the
+    existing recall and packing policies. `mem::context` delegates only its
+    admission arithmetic while preserving its observable behavior. Private
+    content remains suppressed, duplicate normalized skill IDs fail closed, no
+    public surface or state mutation is introduced, and Phase 4B remains future
+    and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.

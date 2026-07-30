@@ -608,6 +608,83 @@ export interface SkillContextExplainResult {
   items: SkillContextPackingDecision[];
 }
 
+export interface SkillContextAdmissionExplainInput {
+  project?: unknown;
+  agentId?: unknown;
+  query?: unknown;
+  files?: unknown;
+  concepts?: unknown;
+  limit?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export type SkillContextAdmissionState =
+  | "disabled"
+  | "failed"
+  | "skipped_no_budget"
+  | "recall_empty"
+  | "packing_empty"
+  | "admitted"
+  | "rejected_outer_budget";
+
+export type SkillContextAdmissionReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "storage_failure"
+  | "duplicate_skill_id"
+  | "no_remaining_budget"
+  | "no_recalled_advisories"
+  | "no_advisory_fits"
+  | "section_admitted"
+  | "section_exceeds_outer_budget";
+
+export interface SkillContextAdmissionEvaluation {
+  separatorTokens: number;
+  remainingOverallBudget: number;
+  effectiveSkillTokenBudget: number;
+  shouldAttemptRecall: boolean;
+  sectionCreated: boolean;
+  sectionAdmitted: boolean;
+  projectedUsedTokens: number;
+  projectedBlockCount: number;
+}
+
+export interface SkillContextAdmissionExplainResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  reason?: string;
+  state: SkillContextAdmissionState;
+  reasonCodes: SkillContextAdmissionReasonCode[];
+  overallBudget: number;
+  usedTokensBeforeSkill: number;
+  selectedBlockCountBeforeSkill: number;
+  configuredSkillTokenBudget: number;
+  separatorTokens: number;
+  remainingOverallBudget: number;
+  effectiveSkillTokenBudget: number;
+  recallAttempted: boolean;
+  effectiveRecallLimit: number;
+  scannedCount: number;
+  validCount: number;
+  malformedCount: number;
+  privacySuppressedCount: number;
+  privateProtectedCount: number;
+  matchedCount: number;
+  recallReturnedCount: number;
+  recallTruncated: boolean;
+  duplicateSkillIdCount: number;
+  packedCount: number;
+  omittedCount: number;
+  packedTokens: number;
+  sectionCreated: boolean;
+  sectionAdmitted: boolean;
+  projectedUsedTokens: number;
+  projectedBlockCount: number;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
