@@ -167,6 +167,8 @@ describe("skill context runtime handoff explanation", () => {
     expect(buildSkillContextRecallRequest(input).payload.project).toBe(" /repo ");
     expect(buildSkillContextRecallRequest({ project: "/repo", agentId: "   ", recallLimit: 10 }))
       .toEqual({ function_id: "mem::skill-recall", payload: { project: "/repo", limit: 10 } });
+    expect(buildSkillContextRecallRequest({ project: "/repo", recallLimit: 1 }))
+      .toEqual({ function_id: "mem::skill-recall", payload: { project: "/repo", limit: 1 } });
   });
 
   it("registers internally, keeps public counts, and gates before validation or trigger work", async () => {
@@ -213,6 +215,26 @@ describe("skill context runtime handoff explanation", () => {
     expect(sdk.requests).toEqual([]);
   });
 
+  it("rejects the complete strict numeric input matrix before triggering", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const invalidNumbers = [undefined, null, "1", true, {}, [], Number.NaN, Infinity, -Infinity, 1.5, -1, Number.MAX_SAFE_INTEGER + 1];
+    const invalid = [
+      ...invalidNumbers.map((overallBudget) => ({ project: "/repo", overallBudget, usedTokens: 0, selectedBlockCount: 0 })),
+      ...invalidNumbers.map((usedTokens) => ({ project: "/repo", overallBudget: 1, usedTokens, selectedBlockCount: 0 })),
+      ...invalidNumbers.map((selectedBlockCount) => ({ project: "/repo", overallBudget: 1, usedTokens: 0, selectedBlockCount })),
+      { project: "/repo", overallBudget: 0, usedTokens: 0, selectedBlockCount: 0 },
+      { project: "/repo", overallBudget: -1, usedTokens: 0, selectedBlockCount: 0 },
+      { project: "/repo", overallBudget: 1, usedTokens: -1, selectedBlockCount: 0 },
+      { project: "/repo", overallBudget: 1, usedTokens: 0, selectedBlockCount: -1 },
+    ];
+    for (const input of invalid) {
+      await expect(explain(input)).resolves.toMatchObject({
+        success: false, state: "failed", reasonCodes: ["invalid_input"], recallAttempted: false,
+      });
+    }
+    expect(sdk.requests).toEqual([]);
+  });
+
   it("uses exactly one normalized recall trigger and never exposes recall content", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig(1000));
     const secret = "runtime-private-marker";
@@ -243,7 +265,18 @@ describe("skill context runtime handoff explanation", () => {
       expect(result).toMatchObject({ success: false, state: "failed", reasonCodes: ["recall_trigger_failure"], recallAttempted: true, recallTriggerSucceeded: false, recallResultParsed: false });
       expect(JSON.stringify(result)).not.toContain("secret");
     }
-    for (const raw of [null, [], false, { success: false, enabled: true, advisories: [] }, { success: true, enabled: false, advisories: [] }, { success: true, enabled: true, advisories: [{}] }]) {
+    for (const raw of [
+      null,
+      [],
+      false,
+      { success: false, enabled: true, advisories: [] },
+      { success: true, enabled: false, advisories: [] },
+      { success: true, enabled: true },
+      { success: true, enabled: true, advisories: "not-an-array" },
+      { success: true, enabled: true, advisories: [{}] },
+      { success: true, enabled: true, advisories: [advisory(), {}] },
+      { success: true, enabled: true, advisories: [advisory({ confidence: Number.NaN })] },
+    ]) {
       sdk.setTrigger(async () => raw);
       await expect(explain({ project: "/repo", overallBudget: 1000, usedTokens: 0, selectedBlockCount: 0 }))
         .resolves.toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_recall_result"], recallTriggerSucceeded: true, recallResultParsed: false });
@@ -270,6 +303,35 @@ describe("skill context runtime handoff explanation", () => {
     expect(repeated).toMatchObject({ state: "admitted", reasonCodes: ["section_admitted"] });
     const rejected = evaluateSkillContextAdmission({ enabled: true, overallBudget: 100, usedTokens: 99, selectedBlockCount: 1, configuredSkillTokenBudget: 320, packedSectionTokens: 1 });
     expect(rejected.sectionAdmitted).toBe(false);
+  });
+
+  it("matches shared packing at fitting, omitted, ordering, and exact boundaries", async () => {
+    const cases = [
+      { label: "one fitting", advisories: [advisory()], budget: 1000 },
+      { label: "multiple fitting", advisories: [advisory({ skillId: "one" }), advisory({ skillId: "two" })], budget: 1000 },
+      { label: "all omitted", advisories: [advisory({ steps: ["x".repeat(4000)] })], budget: 320 },
+      { label: "first oversized later fitting", advisories: [advisory({ skillId: "large" , steps: ["x".repeat(4000)] }), advisory({ skillId: "fits" })], budget: 320 },
+      { label: "middle oversized later fitting", advisories: [advisory({ skillId: "first" }), advisory({ skillId: "large", steps: ["x".repeat(4000)] }), advisory({ skillId: "last" })], budget: 1000 },
+    ];
+    const exactAdvisories = [advisory({ skillId: "exact" })];
+    cases.push({
+      label: "exact boundary",
+      advisories: exactAdvisories,
+      budget: evaluateSkillAdvisoryPacking(exactAdvisories, 10_000).tokens,
+    });
+    for (const current of cases) {
+      loadSkillConfig.mockReturnValue(enabledConfig(current.budget));
+      sdk.setTrigger(async () => ({ success: true, enabled: true, advisories: current.advisories }));
+      const result = await explain({ project: "/repo", overallBudget: 10_000, usedTokens: 0, selectedBlockCount: 0 });
+      const packing = evaluateSkillAdvisoryPacking(current.advisories, current.budget);
+      expect({ packedCount: result.packedCount, omittedCount: result.omittedCount, packedTokens: result.packedTokens, sectionCreated: result.sectionCreated }, current.label)
+        .toEqual({
+          packedCount: packing.decisions.filter((item) => item.state === "packed").length,
+          omittedCount: packing.decisions.filter((item) => item.state === "omitted_budget").length,
+          packedTokens: packing.tokens,
+          sectionCreated: packing.content !== null,
+        });
+    }
   });
 
   it("reports empty and packing-empty results with aggregate invariants", async () => {
@@ -326,5 +388,83 @@ describe("skill context runtime handoff explanation", () => {
       buildSkillContextRecallRequest({ project: "/repo", recallLimit: 3 }),
     ]);
     expect(recordAccessBatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps caller and recall values private, immutable, and independently allocated", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig(1000));
+    const markers = {
+      project: "project-private-marker",
+      agent: "agent-private-marker",
+      skillId: "skill-private-marker",
+      name: "name-private-marker",
+      trigger: "trigger-private-marker",
+      step: "step-private-marker",
+      outcome: "outcome-private-marker",
+      antiPattern: "anti-private-marker",
+      error: "error-private-marker",
+    };
+    const input = {
+      project: markers.project,
+      agentId: markers.agent,
+      overallBudget: 1000,
+      usedTokens: 0,
+      selectedBlockCount: 0,
+    };
+    const raw = {
+      success: true,
+      enabled: true,
+      error: markers.error,
+      advisories: [advisory({
+        skillId: markers.skillId,
+        name: markers.name,
+        triggerCondition: markers.trigger,
+        steps: [markers.step],
+        expectedOutcome: markers.outcome,
+        antiPatterns: [markers.antiPattern],
+      })],
+    };
+    const beforeInput = structuredClone(input);
+    const beforeRaw = structuredClone(raw);
+    sdk.setTrigger(async () => raw);
+    const result = await explain(input);
+    expect(input).toEqual(beforeInput);
+    expect(raw).toEqual(beforeRaw);
+    for (const marker of Object.values(markers)) expect(JSON.stringify(result)).not.toContain(marker);
+    const mutable = result as unknown as Record<string, unknown>;
+    mutable.reasonCodes = ["invalid_input"];
+    mutable.state = "failed";
+    mutable.overallBudget = -1;
+    mutable.usedTokensBeforeSkill = -1;
+    mutable.selectedBlockCountBeforeSkill = -1;
+    mutable.configuredSkillTokenBudget = -1;
+    mutable.separatorTokens = -1;
+    mutable.remainingOverallBudget = -1;
+    mutable.effectiveSkillTokenBudget = -1;
+    mutable.effectiveRecallLimit = -1;
+    mutable.recallAttempted = false;
+    mutable.recallTriggerSucceeded = false;
+    mutable.recallResultParsed = false;
+    mutable.parsedAdvisoryCount = -1;
+    mutable.packedCount = -1;
+    mutable.omittedCount = -1;
+    mutable.packedTokens = -1;
+    mutable.sectionCreated = false;
+    mutable.sectionAdmitted = false;
+    mutable.projectedUsedTokens = -1;
+    mutable.projectedBlockCount = -1;
+    const pristine = await explain(input);
+    expect(pristine).toMatchObject({
+      state: "admitted",
+      reasonCodes: ["section_admitted"],
+      overallBudget: 1000,
+      recallAttempted: true,
+      recallTriggerSucceeded: true,
+      recallResultParsed: true,
+      packedCount: 1,
+      sectionAdmitted: true,
+    });
+    sdk.setTrigger(async () => { throw new Error(markers.error); });
+    const failure = await explain(input);
+    expect(JSON.stringify(failure)).not.toContain(markers.error);
   });
 });
