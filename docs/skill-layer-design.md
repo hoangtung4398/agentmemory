@@ -639,6 +639,19 @@ lifecycle check; PR13b does not invent or persist a new status.
     policies, returns aggregate-only results, exposes no public surface, and
     writes no state. It does not diagnose physical duplicate rows hidden behind
     recall. Phase 4B remains future and separately authorized.
+24. **Phase 5F - Read-only skill context path parity diagnostics: implemented
+    by this milestone.** The internal-only
+    `mem::skill-context-parity-diagnostics` function compares Phase 5D's direct
+    admission explanation with Phase 5E's runtime handoff using a shared,
+    aggregate-only parity snapshot. It strictly parses both nested results,
+    compares every shared field using canonical mismatch codes, and invokes the
+    two explainers sequentially in direct-before-runtime order. No-budget
+    comparison performs no reads; a positive-budget integrated comparison
+    performs the existing two `KV.skills` reads. The diagnostic receives no KV,
+    exposes no public surface, writes no state, and never repairs a mismatch.
+    Its `sequential_best_effort_non_atomic` result can observe different state
+    moments and therefore does not prove implementation drift. Phase 4B remains
+    future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.

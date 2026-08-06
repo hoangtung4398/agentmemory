@@ -741,6 +741,92 @@ export interface SkillContextRuntimeExplainResult {
   projectedBlockCount: number;
 }
 
+export interface SkillContextParityDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export interface SkillContextParitySnapshot {
+  success: boolean;
+  enabled: boolean;
+  state: SkillContextAdmissionState | SkillContextRuntimeState;
+  overallBudget: number;
+  usedTokensBeforeSkill: number;
+  selectedBlockCountBeforeSkill: number;
+  configuredSkillTokenBudget: number;
+  separatorTokens: number;
+  remainingOverallBudget: number;
+  effectiveSkillTokenBudget: number;
+  effectiveRecallLimit: number;
+  recallAttempted: boolean;
+  recalledAdvisoryCount: number;
+  packedCount: number;
+  omittedCount: number;
+  packedTokens: number;
+  sectionCreated: boolean;
+  sectionAdmitted: boolean;
+  projectedUsedTokens: number;
+  projectedBlockCount: number;
+}
+
+export type SkillContextParityMismatchCode =
+  | "path_success_mismatch"
+  | "path_enabled_mismatch"
+  | "path_state_mismatch"
+  | "overall_budget_mismatch"
+  | "used_tokens_mismatch"
+  | "selected_block_count_mismatch"
+  | "configured_skill_budget_mismatch"
+  | "separator_tokens_mismatch"
+  | "remaining_budget_mismatch"
+  | "effective_skill_budget_mismatch"
+  | "effective_recall_limit_mismatch"
+  | "recall_attempt_mismatch"
+  | "recalled_advisory_count_mismatch"
+  | "packed_count_mismatch"
+  | "omitted_count_mismatch"
+  | "packed_tokens_mismatch"
+  | "section_created_mismatch"
+  | "section_admitted_mismatch"
+  | "projected_used_tokens_mismatch"
+  | "projected_block_count_mismatch";
+
+export type SkillContextParityDiagnosticsState = "disabled" | "failed" | "consistent" | "mismatch";
+
+export type SkillContextParityDiagnosticsReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "direct_trigger_failure"
+  | "invalid_direct_result"
+  | "runtime_trigger_failure"
+  | "invalid_runtime_result"
+  | "paths_consistent"
+  | "paths_mismatch";
+
+export interface SkillContextParityDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  state: SkillContextParityDiagnosticsState;
+  reasonCodes: SkillContextParityDiagnosticsReasonCode[];
+  reason?: string;
+  comparisonMode: "sequential_best_effort_non_atomic";
+  comparisonAvailable: boolean;
+  consistent: boolean;
+  directTriggerAttempted: boolean;
+  directTriggerSucceeded: boolean;
+  directResultParsed: boolean;
+  runtimeTriggerAttempted: boolean;
+  runtimeTriggerSucceeded: boolean;
+  runtimeResultParsed: boolean;
+  mismatchCodes: SkillContextParityMismatchCode[];
+  direct: SkillContextParitySnapshot | null;
+  runtime: SkillContextParitySnapshot | null;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
