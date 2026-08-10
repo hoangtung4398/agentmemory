@@ -665,6 +665,22 @@ lifecycle check; PR13b does not invent or persist a new status.
     triggers and the existing four `KV.skills` lists. The diagnostic has no
     direct KV access, public surface, state mutation, or automatic repair.
     Phase 4B remains future and separately authorized.
+26. **Phase 5H - Read-only skill context parity drift attribution diagnostics:
+    implemented by this milestone.** The internal-only
+    `mem::skill-context-parity-drift-attribution-diagnostics` takes one strict
+    Phase 5G stability result and converts only canonical mismatch/drift codes
+    into fixed aggregate stages: `path_contract`, `budget`, `recall`,
+    `packing`, and `admission`. Stable consistency has no attribution; a stable
+    mismatch attributes only its repeatable mismatch codes; observed drift
+    attributes direct and runtime drift independently. A changed parity outcome
+    without snapshot drift is reported only as `parityOutcomeChanged`, without
+    inventing a causal stage. This is bounded attribution evidence, not proof of
+    a particular mutation or implementation defect. The one-sample outer call
+    remains sequential and non-atomic through Phase 5G: the no-budget chain has
+    seven triggers and zero reads, while a positive-budget chain has nine
+    triggers and the existing four `KV.skills` lists. The diagnostic has no
+    direct KV access, public surface, state mutation, or automatic repair.
+    Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
