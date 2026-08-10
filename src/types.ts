@@ -956,6 +956,68 @@ export interface SkillContextParityDriftAttributionDiagnosticsResult {
   runtimeDriftAttribution: SkillContextParityAttributionSummary;
 }
 
+export interface SkillContextParityDriftScopeDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export type SkillContextParityDriftScopeLane =
+  | "repeatable_mismatch"
+  | "direct_drift"
+  | "runtime_drift"
+  | "parity_outcome";
+
+export interface SkillContextParityDriftScopeEvaluation {
+  affectedStages: SkillContextParityAttributionStage[];
+  activeLanes: SkillContextParityDriftScopeLane[];
+  stageCount: number;
+  laneCount: number;
+  crossStage: boolean;
+  crossPathDrift: boolean;
+  parityOnly: boolean;
+}
+
+export type SkillContextParityDriftScopeDiagnosticsState =
+  | "disabled"
+  | "failed"
+  | "stable_consistent"
+  | "stable_mismatch"
+  | "observed_drift";
+
+export type SkillContextParityDriftScopeDiagnosticsReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "attribution_trigger_failure"
+  | "invalid_attribution_result"
+  | "attribution_classification_unavailable"
+  | "stable_consistency_scoped"
+  | "stable_mismatch_scoped"
+  | "observed_drift_scoped";
+
+export interface SkillContextParityDriftScopeDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  state: SkillContextParityDriftScopeDiagnosticsState;
+  reasonCodes: SkillContextParityDriftScopeDiagnosticsReasonCode[];
+  reason?: string;
+  sourceSamplingMode: "sequential_double_sample_non_atomic";
+  scopeAvailable: boolean;
+  attributionTriggerAttempted: boolean;
+  attributionTriggerSucceeded: boolean;
+  attributionResultParsed: boolean;
+  affectedStages: SkillContextParityAttributionStage[];
+  activeLanes: SkillContextParityDriftScopeLane[];
+  stageCount: number;
+  laneCount: number;
+  crossStage: boolean;
+  crossPathDrift: boolean;
+  parityOnly: boolean;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;

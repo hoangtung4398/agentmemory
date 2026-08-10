@@ -681,6 +681,19 @@ lifecycle check; PR13b does not invent or persist a new status.
     triggers and the existing four `KV.skills` lists. The diagnostic has no
     direct KV access, public surface, state mutation, or automatic repair.
     Phase 4B remains future and separately authorized.
+27. **Phase 5I - Read-only skill context parity drift scope diagnostics:
+    implemented by this milestone.** The internal-only
+    `mem::skill-context-parity-drift-scope-diagnostics` takes one strict Phase
+    5H attribution result and exposes only its aggregate scope: the canonical
+    union of affected stages, the fixed `repeatable_mismatch`, `direct_drift`,
+    `runtime_drift`, and `parity_outcome` lanes, stage/lane counts,
+    `crossStage`, `crossPathDrift`, and `parityOnly`. It is descriptive and
+    non-causal: it does not identify a root cause, implementation defect,
+    skill, state mutation, or severity. The no-budget chain makes eight
+    triggers and zero reads; a positive-budget chain makes ten triggers and
+    the existing four `KV.skills` lists. It has no direct KV access, public
+    surface, state mutation, or automatic repair. Phase 4B remains future and
+    separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
