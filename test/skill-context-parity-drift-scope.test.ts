@@ -161,6 +161,14 @@ describe("skill context parity drift scope diagnostics", () => {
       function_id: "mem::skill-context-parity-drift-attribution-diagnostics",
       payload: { project: "/repo", overallBudget: 1, usedTokens: 0, selectedBlockCount: 0 },
     });
+    expect(buildSkillContextParityDriftScopeRequest({ project: "/repo", overallBudget: Number.MAX_SAFE_INTEGER, usedTokens: Number.MAX_SAFE_INTEGER, selectedBlockCount: Number.MAX_SAFE_INTEGER }).payload).toMatchObject({ overallBudget: Number.MAX_SAFE_INTEGER, usedTokens: Number.MAX_SAFE_INTEGER, selectedBlockCount: Number.MAX_SAFE_INTEGER });
+    const widened = { ...input, query: "ignored", files: ["secret"], concepts: ["secret"], limit: 1, sampleCount: 2, retryCount: 3, scopeMode: "all", severity: "high" };
+    const widenedBefore = structuredClone(widened);
+    const request = buildSkillContextParityDriftScopeRequest(widened as never);
+    for (const key of ["query", "files", "concepts", "limit", "sampleCount", "retryCount", "scopeMode", "severity"]) expect(request.payload).not.toHaveProperty(key);
+    for (const key of ["project", "agentId", "overallBudget", "usedTokens", "selectedBlockCount"] as const) (request.payload as Record<string, unknown>)[key] = "mutated";
+    expect(buildSkillContextParityDriftScopeRequest(widened as never).payload).toEqual(input);
+    expect(widened).toEqual(widenedBefore);
   });
 
   it("gates before validation and rejects every structural or numeric invalid input without a trigger", async () => {
@@ -172,6 +180,7 @@ describe("skill context parity drift scope diagnostics", () => {
       ...invalidNumbers.map((usedTokens) => ({ project: "/repo", overallBudget: 1, usedTokens, selectedBlockCount: 0 })),
       ...invalidNumbers.map((selectedBlockCount) => ({ project: "/repo", overallBudget: 1, usedTokens: 0, selectedBlockCount })),
       ...[null, 1, false, {}, []].map((agentId) => ({ ...validInput(), agentId })),
+      Symbol("invalid"),
     ];
     for (const input of invalid) {
       sdk.requests.length = 0;
@@ -233,6 +242,26 @@ describe("skill context parity drift scope diagnostics", () => {
     }
   });
 
+  it("rejects missing and wrong-type forms for every required Phase 5H top-level field", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const fields = ["success", "enabled", "applied", "state", "reasonCodes", "sourceSamplingMode", "attributionAvailable", "stabilityTriggerAttempted", "stabilityTriggerSucceeded", "stabilityResultParsed", "parityOutcomeChanged", "repeatableMismatchAttribution", "directDriftAttribution", "runtimeDriftAttribution"];
+    for (const field of fields) {
+      const missing = attributionResult() as unknown as Record<string, unknown>;
+      delete missing[field];
+      sdk.setTrigger(async () => missing);
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_attribution_result"], attributionTriggerAttempted: true, attributionTriggerSucceeded: true, attributionResultParsed: false });
+    }
+    const wrongTypes: Record<string, unknown> = { success: null, enabled: "true", applied: 0, state: null, reasonCodes: "code", sourceSamplingMode: null, attributionAvailable: 1, stabilityTriggerAttempted: null, stabilityTriggerSucceeded: 1, stabilityResultParsed: "true", parityOutcomeChanged: null, repeatableMismatchAttribution: null, directDriftAttribution: [], runtimeDriftAttribution: "summary" };
+    for (const [field, wrong] of Object.entries(wrongTypes)) {
+      sdk.setTrigger(async () => attributionResult("stable_consistent", { [field]: wrong }));
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, reasonCodes: ["invalid_attribution_result"], attributionResultParsed: false });
+    }
+    for (const override of [{ reason: 1 }, { state: "unknown" }, { reasonCodes: ["unknown"] }, { reasonCodes: [] }, { reasonCodes: ["stable_consistency_attributed", "observed_drift_attributed"] }, { extra: true }]) {
+      sdk.setTrigger(async () => attributionResult("stable_consistent", override));
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, reasonCodes: ["invalid_attribution_result"] });
+    }
+  });
+
   it("rejects count boundaries and stage/count disagreement in each nested attribution summary", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig());
     const keys = ["repeatableMismatchAttribution", "directDriftAttribution", "runtimeDriftAttribution"] as const;
@@ -247,6 +276,35 @@ describe("skill context parity drift scope diagnostics", () => {
       disagreement[key] = attribution(["budget"], { budget: 0 });
       sdk.setTrigger(async () => disagreement);
       await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, reasonCodes: ["invalid_attribution_result"] });
+    }
+  });
+
+  it("rejects every malformed form in each attribution summary and every nested state flag contradiction", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const keys = ["repeatableMismatchAttribution", "directDriftAttribution", "runtimeDriftAttribution"] as const;
+    for (const key of keys) {
+      const malformed: unknown[] = [null, [], "summary", { stageCounts: attribution().stageCounts }, { stages: [] }, { stages: [], stageCounts: attribution().stageCounts, extra: true }];
+      for (const value of malformed) {
+        sdk.setTrigger(async () => attributionResult("stable_consistent", { [key]: value }));
+        await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
+      }
+    }
+    for (const field of ["success", "enabled", "attributionAvailable", "stabilityTriggerAttempted", "stabilityTriggerSucceeded", "stabilityResultParsed", "parityOutcomeChanged"] as const) {
+      const raw = attributionResult("disabled") as unknown as Record<string, unknown>;
+      raw[field] = field === "success" ? false : field === "enabled" ? true : true;
+      sdk.setTrigger(async () => raw);
+      await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
+    }
+    for (const code of ["stability_trigger_failure", "invalid_stability_result", "stability_classification_unavailable"]) {
+      for (const field of ["stabilityTriggerAttempted", "stabilityTriggerSucceeded", "stabilityResultParsed"] as const) {
+        const flags = code === "stability_trigger_failure" ? { stabilityTriggerAttempted: true, stabilityTriggerSucceeded: false, stabilityResultParsed: false } :
+          code === "invalid_stability_result" ? { stabilityTriggerAttempted: true, stabilityTriggerSucceeded: true, stabilityResultParsed: false } :
+            { stabilityTriggerAttempted: true, stabilityTriggerSucceeded: true, stabilityResultParsed: true };
+        const raw = attributionResult("failed", { reasonCodes: [code], ...flags }) as unknown as Record<string, unknown>;
+        raw[field] = !(raw[field] as boolean);
+        sdk.setTrigger(async () => raw);
+        await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
+      }
     }
   });
 
@@ -276,6 +334,7 @@ describe("skill context parity drift scope diagnostics", () => {
     const cases: Array<[SkillContextParityDriftAttributionDiagnosticsResult, Record<string, unknown>]> = [
       [attributionResult(), { state: "stable_consistent", affectedStages: [], activeLanes: [], stageCount: 0, laneCount: 0 }],
       [attributionResult("stable_mismatch"), { state: "stable_mismatch", affectedStages: ["packing"], activeLanes: ["repeatable_mismatch"] }],
+      [attributionResult("stable_mismatch", { repeatableMismatchAttribution: attribution(["budget", "packing"], { budget: 1, packing: 1 }) }), { state: "stable_mismatch", affectedStages: ["budget", "packing"], activeLanes: ["repeatable_mismatch"], stageCount: 2, laneCount: 1, crossStage: true, crossPathDrift: false, parityOnly: false }],
       [attributionResult("observed_drift"), { state: "observed_drift", affectedStages: ["budget"], activeLanes: ["direct_drift"], crossPathDrift: false }],
       [attributionResult("observed_drift", { directDriftAttribution: attribution(), runtimeDriftAttribution: attribution(["recall"], { recall: 1 }) }), { activeLanes: ["runtime_drift"] }],
       [attributionResult("observed_drift", { directDriftAttribution: attribution(["budget"], { budget: 1 }), runtimeDriftAttribution: attribution(["packing"], { packing: 1 }) }), { activeLanes: ["direct_drift", "runtime_drift"], crossPathDrift: true, crossStage: true }],
@@ -305,12 +364,24 @@ describe("skill context parity drift scope diagnostics", () => {
     const before = structuredClone({ raw, caller });
     sdk.setTrigger(async () => raw);
     const first = await diagnose(caller);
-    first.reasonCodes.push("invalid_input");
-    first.affectedStages.push("packing");
-    first.activeLanes.push("runtime_drift");
+    first.reasonCodes.push("invalid_input"); first.state = "failed"; first.sourceSamplingMode = "sequential_double_sample_non_atomic";
+    first.scopeAvailable = false; first.attributionTriggerAttempted = false; first.attributionTriggerSucceeded = false; first.attributionResultParsed = false;
+    first.affectedStages.push("packing"); first.activeLanes.push("runtime_drift"); first.stageCount = 99; first.laneCount = 99; first.crossStage = false; first.crossPathDrift = false; first.parityOnly = true;
     const second = await diagnose(caller);
     expect(second).toMatchObject({ reasonCodes: ["observed_drift_scoped"], affectedStages: ["budget"], activeLanes: ["direct_drift"] });
     expect({ raw, caller }).toEqual(before);
+    for (const scenario of [
+      { config: { ...enabledConfig(), contextEnabled: false }, raw: attributionResult(), expected: ["context_disabled"] },
+      { config: enabledConfig(), raw: null, expected: ["invalid_attribution_result"] },
+      { config: enabledConfig(), raw: attributionResult("failed"), expected: ["attribution_classification_unavailable"] },
+    ]) {
+      loadSkillConfig.mockReturnValue(scenario.config);
+      sdk.setTrigger(async () => scenario.raw);
+      const output = await diagnose(validInput());
+      output.reasonCodes.push("invalid_input"); output.affectedStages.push("budget"); output.activeLanes.push("direct_drift");
+      const pristine = await diagnose(validInput());
+      expect(pristine.reasonCodes).toEqual(scenario.expected);
+    }
   });
 
   it("does not return prohibited nested markers from valid or malformed Phase 5H results", async () => {
@@ -324,11 +395,17 @@ describe("skill context parity drift scope diagnostics", () => {
     for (const marker of ["private-project", "private-agent", "secret-text", "repeatableMismatchAttribution", "stageCounts", "payload"]) {
       expect(output).not.toContain(marker);
     }
+    const valid = attributionResult("observed_drift", { reason: "private-nested-reason" });
+    sdk.setTrigger(async () => valid);
+    const successful = JSON.stringify(await diagnose(validInput({ project: "private-project", agentId: "private-agent" })));
+    for (const marker of ["private-project", "private-agent", "private-nested-reason", "repeatableMismatchAttribution", "directDriftAttribution", "runtimeDriftAttribution", "stageCounts", "payload"]) expect(successful).not.toContain(marker);
   });
 
   it("uses only the Phase 5H chain with eight no-budget triggers and ten positive-budget triggers", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig(1000));
-    const noBudgetKV = mockKV([skill()]);
+    const noBudgetRows = [skill()];
+    const noBudgetBefore = structuredClone(noBudgetRows);
+    const noBudgetKV = mockKV(noBudgetRows);
     const noBudgetSdk = mockSdk();
     registerSkillContextAdmissionExplainFunction(noBudgetSdk as never, noBudgetKV as never);
     registerSkillRecallFunction(noBudgetSdk as never, noBudgetKV as never);
@@ -346,8 +423,11 @@ describe("skill context parity drift scope diagnostics", () => {
     expect(noBudgetKV.lists).toEqual([]);
     expect(noBudgetKV.gets).toEqual([]);
     expect(noBudgetKV.writes).toEqual([]);
+    expect(noBudgetRows).toEqual(noBudgetBefore);
 
-    const positiveKV = mockKV([skill()]);
+    const positiveRows = [skill()];
+    const positiveBefore = structuredClone(positiveRows);
+    const positiveKV = mockKV(positiveRows);
     const positiveSdk = mockSdk();
     registerSkillContextAdmissionExplainFunction(positiveSdk as never, positiveKV as never);
     registerSkillRecallFunction(positiveSdk as never, positiveKV as never);
@@ -365,5 +445,6 @@ describe("skill context parity drift scope diagnostics", () => {
     expect(positiveKV.lists).toEqual([KV.skills, KV.skills, KV.skills, KV.skills]);
     expect(positiveKV.gets).toEqual([]);
     expect(positiveKV.writes).toEqual([]);
+    expect(positiveRows).toEqual(positiveBefore);
   });
 });
