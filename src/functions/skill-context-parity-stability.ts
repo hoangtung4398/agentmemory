@@ -136,6 +136,23 @@ function hasExactCodes<T extends string>(actual: T[], expected: T[]): boolean {
   return actual.length === expected.length && actual.every((code, index) => code === expected[index]);
 }
 
+function hasValidUnavailablePath(
+  failureCode: "direct_trigger_failure" | "invalid_direct_result" | "runtime_trigger_failure" | "invalid_runtime_result" | null,
+  attempted: boolean,
+  succeeded: boolean,
+  parsed: boolean,
+  snapshot: SkillContextParitySnapshot | null,
+): boolean {
+  if (!attempted) return false;
+  if (failureCode === "direct_trigger_failure" || failureCode === "runtime_trigger_failure") {
+    return !succeeded && !parsed && snapshot === null;
+  }
+  if (failureCode === "invalid_direct_result" || failureCode === "invalid_runtime_result") {
+    return succeeded && !parsed && snapshot === null;
+  }
+  return succeeded && parsed && snapshot !== null;
+}
+
 function parseSnapshot(value: unknown): SkillContextParitySnapshot | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const snapshot = value as Record<string, unknown>;
@@ -202,7 +219,17 @@ function parseSample(value: unknown): ParsedSample | null {
     if (summary.state === "disabled" && (!summary.success || summary.enabled || !hasExactCodes(result.reasonCodes as SkillContextParityDiagnosticsReasonCode[], ["context_disabled"]) ||
       result.directTriggerAttempted || result.directTriggerSucceeded || result.directResultParsed ||
       result.runtimeTriggerAttempted || result.runtimeTriggerSucceeded || result.runtimeResultParsed || direct || runtime)) return null;
-    if (summary.state === "failed" && (summary.success || result.reasonCodes.length === 0)) return null;
+    if (summary.state === "failed") {
+      const reasonCodes = result.reasonCodes as SkillContextParityDiagnosticsReasonCode[];
+      const directFailures = reasonCodes.filter((code) => code === "direct_trigger_failure" || code === "invalid_direct_result");
+      const runtimeFailures = reasonCodes.filter((code) => code === "runtime_trigger_failure" || code === "invalid_runtime_result");
+      if (summary.success || !summary.enabled || reasonCodes.length === 0 ||
+        directFailures.length > 1 || runtimeFailures.length > 1 ||
+        reasonCodes.some((code) => code !== "direct_trigger_failure" && code !== "invalid_direct_result" &&
+          code !== "runtime_trigger_failure" && code !== "invalid_runtime_result") ||
+        !hasValidUnavailablePath(directFailures[0] ?? null, result.directTriggerAttempted, result.directTriggerSucceeded, result.directResultParsed, direct) ||
+        !hasValidUnavailablePath(runtimeFailures[0] ?? null, result.runtimeTriggerAttempted, result.runtimeTriggerSucceeded, result.runtimeResultParsed, runtime)) return null;
+    }
     return { summary, direct, runtime };
   }
   if (!summary.success || (summary.state !== "consistent" && summary.state !== "mismatch") || !direct || !runtime ||
