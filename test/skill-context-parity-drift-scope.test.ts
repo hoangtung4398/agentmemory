@@ -173,8 +173,8 @@ describe("skill context parity drift scope diagnostics", () => {
 
   it("gates before validation and rejects every structural or numeric invalid input without a trigger", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig());
-    const invalidNumbers = [undefined, null, "1", false, NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, -1];
-    const invalid = [null, [], "value", 1, true, {}, { ...validInput(), project: "   " },
+    const invalidNumbers = [undefined, null, "1", false, true, {}, [], NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1, -1];
+    const invalid = [null, [], "value", 1, true, {}, { ...validInput(), project: "   " }, ...[1, true, {}, []].map((project) => ({ ...validInput(), project })),
       { project: "/repo", overallBudget: 0, usedTokens: 0, selectedBlockCount: 0 },
       ...invalidNumbers.map((overallBudget) => ({ project: "/repo", overallBudget, usedTokens: 0, selectedBlockCount: 0 })),
       ...invalidNumbers.map((usedTokens) => ({ project: "/repo", overallBudget: 1, usedTokens, selectedBlockCount: 0 })),
@@ -295,6 +295,15 @@ describe("skill context parity drift scope diagnostics", () => {
       sdk.setTrigger(async () => raw);
       await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
     }
+    for (const override of [
+      { reasonCodes: ["wrong"] },
+      { repeatableMismatchAttribution: attribution(["budget"], { budget: 1 }) },
+      { directDriftAttribution: attribution(["budget"], { budget: 1 }) },
+      { runtimeDriftAttribution: attribution(["budget"], { budget: 1 }) },
+    ]) {
+      sdk.setTrigger(async () => attributionResult("disabled", override));
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_attribution_result"], attributionResultParsed: false });
+    }
     for (const code of ["stability_trigger_failure", "invalid_stability_result", "stability_classification_unavailable"]) {
       for (const field of ["stabilityTriggerAttempted", "stabilityTriggerSucceeded", "stabilityResultParsed"] as const) {
         const flags = code === "stability_trigger_failure" ? { stabilityTriggerAttempted: true, stabilityTriggerSucceeded: false, stabilityResultParsed: false } :
@@ -306,6 +315,20 @@ describe("skill context parity drift scope diagnostics", () => {
         await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
       }
     }
+    for (const override of [
+      { parityOutcomeChanged: true }, { directDriftAttribution: attribution(["budget"], { budget: 1 }) }, { runtimeDriftAttribution: attribution(["budget"], { budget: 1 }) }, { reasonCodes: ["observed_drift_attributed"] },
+    ]) {
+      sdk.setTrigger(async () => attributionResult("stable_mismatch", override));
+      await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
+    }
+    for (const override of [
+      { repeatableMismatchAttribution: attribution(["budget"], { budget: 1 }) }, { reasonCodes: ["stable_consistency_attributed"] },
+    ]) {
+      sdk.setTrigger(async () => attributionResult("observed_drift", override));
+      await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
+    }
+    sdk.setTrigger(async () => attributionResult("stable_consistent", { directDriftAttribution: attribution(["budget"], { budget: 1 }) }));
+    await expect(diagnose(validInput())).resolves.toMatchObject({ reasonCodes: ["invalid_attribution_result"] });
   });
 
   it("evaluates every scope lane in canonical order without mutating inputs", () => {
@@ -382,6 +405,20 @@ describe("skill context parity drift scope diagnostics", () => {
       const pristine = await diagnose(validInput());
       expect(pristine.reasonCodes).toEqual(scenario.expected);
     }
+    const invalidCaller = { ...validInput(), project: "" };
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const invalidFirst = await diagnose(invalidCaller);
+    invalidFirst.reasonCodes.push("context_disabled"); invalidFirst.state = "disabled"; invalidFirst.sourceSamplingMode = "sequential_double_sample_non_atomic"; invalidFirst.scopeAvailable = true; invalidFirst.attributionTriggerAttempted = true; invalidFirst.attributionTriggerSucceeded = true; invalidFirst.attributionResultParsed = true; invalidFirst.affectedStages.push("budget"); invalidFirst.activeLanes.push("direct_drift"); invalidFirst.stageCount = 1; invalidFirst.laneCount = 1; invalidFirst.crossStage = true; invalidFirst.crossPathDrift = true; invalidFirst.parityOnly = true;
+    const invalidSecond = await diagnose(invalidCaller);
+    expect(invalidSecond).toMatchObject({ state: "failed", reasonCodes: ["invalid_input"], scopeAvailable: false, attributionTriggerAttempted: false, affectedStages: [], activeLanes: [], stageCount: 0, laneCount: 0 });
+    const thrown = { privateMarker: "unchanged" };
+    const thrownBefore = structuredClone(thrown);
+    sdk.setTrigger(async () => { throw thrown; });
+    const failedFirst = await diagnose(validInput());
+    failedFirst.reasonCodes.push("context_disabled"); failedFirst.state = "disabled"; failedFirst.sourceSamplingMode = "sequential_double_sample_non_atomic"; failedFirst.scopeAvailable = true; failedFirst.attributionTriggerAttempted = false; failedFirst.attributionTriggerSucceeded = true; failedFirst.attributionResultParsed = true; failedFirst.affectedStages.push("budget"); failedFirst.activeLanes.push("direct_drift"); failedFirst.stageCount = 1; failedFirst.laneCount = 1; failedFirst.crossStage = true; failedFirst.crossPathDrift = true; failedFirst.parityOnly = true;
+    const failedSecond = await diagnose(validInput());
+    expect(failedSecond).toMatchObject({ state: "failed", reasonCodes: ["attribution_trigger_failure"], scopeAvailable: false, attributionTriggerAttempted: true, attributionTriggerSucceeded: false, attributionResultParsed: false, affectedStages: [], activeLanes: [] });
+    expect(thrown).toEqual(thrownBefore);
   });
 
   it("does not return prohibited nested markers from valid or malformed Phase 5H results", async () => {
