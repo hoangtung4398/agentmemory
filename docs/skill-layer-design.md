@@ -652,6 +652,19 @@ lifecycle check; PR13b does not invent or persist a new status.
     Its `sequential_best_effort_non_atomic` result can observe different state
     moments and therefore does not prove implementation drift. Phase 4B remains
     future and separately authorized.
+25. **Phase 5G - Read-only skill context parity stability diagnostics: implemented
+    by this milestone.** The internal-only
+    `mem::skill-context-parity-stability-diagnostics` function takes exactly two
+    sequential Phase 5F samples using the same normalized request. It strictly
+    parses the Phase 5F contract, returns only aggregate sample summaries, and
+    classifies the pair as `stable_consistent`, `stable_mismatch`, or
+    `observed_drift`. A stable mismatch is bounded repeatability evidence, not
+    proof of implementation drift; observed drift does not identify a particular
+    state mutation. Sampling is sequential and non-atomic. A no-budget chain
+    makes six triggers and zero reads, while a positive-budget chain makes eight
+    triggers and the existing four `KV.skills` lists. The diagnostic has no
+    direct KV access, public surface, state mutation, or automatic repair.
+    Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.

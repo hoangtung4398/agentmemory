@@ -827,6 +827,74 @@ export interface SkillContextParityDiagnosticsResult {
   runtime: SkillContextParitySnapshot | null;
 }
 
+export interface SkillContextParityStabilityDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export interface SkillContextParityStabilitySampleSummary {
+  success: boolean;
+  enabled: boolean;
+  state: SkillContextParityDiagnosticsState;
+  comparisonAvailable: boolean;
+  consistent: boolean;
+  mismatchCodes: SkillContextParityMismatchCode[];
+}
+
+export interface SkillContextParityStabilityEvaluation {
+  state: "stable_consistent" | "stable_mismatch" | "observed_drift";
+  directDriftCodes: SkillContextParityMismatchCode[];
+  runtimeDriftCodes: SkillContextParityMismatchCode[];
+  stableAcrossSamples: boolean;
+  repeatableMismatch: boolean;
+}
+
+export type SkillContextParityStabilityState =
+  | "disabled"
+  | "failed"
+  | "stable_consistent"
+  | "stable_mismatch"
+  | "observed_drift";
+
+export type SkillContextParityStabilityReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "first_trigger_failure"
+  | "invalid_first_result"
+  | "first_comparison_unavailable"
+  | "second_trigger_failure"
+  | "invalid_second_result"
+  | "second_comparison_unavailable"
+  | "stable_consistency_observed"
+  | "stable_mismatch_observed"
+  | "sample_drift_observed";
+
+export interface SkillContextParityStabilityDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  state: SkillContextParityStabilityState;
+  reasonCodes: SkillContextParityStabilityReasonCode[];
+  reason?: string;
+  samplingMode: "sequential_double_sample_non_atomic";
+  sampleCount: 2;
+  firstTriggerAttempted: boolean;
+  firstTriggerSucceeded: boolean;
+  firstResultParsed: boolean;
+  secondTriggerAttempted: boolean;
+  secondTriggerSucceeded: boolean;
+  secondResultParsed: boolean;
+  first: SkillContextParityStabilitySampleSummary | null;
+  second: SkillContextParityStabilitySampleSummary | null;
+  directDriftCodes: SkillContextParityMismatchCode[];
+  runtimeDriftCodes: SkillContextParityMismatchCode[];
+  stableAcrossSamples: boolean;
+  repeatableMismatch: boolean;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
