@@ -895,6 +895,67 @@ export interface SkillContextParityStabilityDiagnosticsResult {
   repeatableMismatch: boolean;
 }
 
+export interface SkillContextParityDriftAttributionDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export type SkillContextParityAttributionStage =
+  | "path_contract"
+  | "budget"
+  | "recall"
+  | "packing"
+  | "admission";
+
+export interface SkillContextParityAttributionSummary {
+  stages: SkillContextParityAttributionStage[];
+  stageCounts: {
+    path_contract: number;
+    budget: number;
+    recall: number;
+    packing: number;
+    admission: number;
+  };
+}
+
+export type SkillContextParityDriftAttributionDiagnosticsState =
+  | "disabled"
+  | "failed"
+  | "stable_consistent"
+  | "stable_mismatch"
+  | "observed_drift";
+
+export type SkillContextParityDriftAttributionDiagnosticsReasonCode =
+  | "context_disabled"
+  | "invalid_input"
+  | "stability_trigger_failure"
+  | "invalid_stability_result"
+  | "stability_classification_unavailable"
+  | "stable_consistency_attributed"
+  | "stable_mismatch_attributed"
+  | "observed_drift_attributed";
+
+export interface SkillContextParityDriftAttributionDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  state: SkillContextParityDriftAttributionDiagnosticsState;
+  reasonCodes: SkillContextParityDriftAttributionDiagnosticsReasonCode[];
+  reason?: string;
+  sourceSamplingMode: "sequential_double_sample_non_atomic";
+  attributionAvailable: boolean;
+  stabilityTriggerAttempted: boolean;
+  stabilityTriggerSucceeded: boolean;
+  stabilityResultParsed: boolean;
+  parityOutcomeChanged: boolean;
+  repeatableMismatchAttribution: SkillContextParityAttributionSummary;
+  directDriftAttribution: SkillContextParityAttributionSummary;
+  runtimeDriftAttribution: SkillContextParityAttributionSummary;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;

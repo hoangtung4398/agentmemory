@@ -93,6 +93,7 @@ import { registerSkillContextAdmissionExplainFunction } from "./functions/skill-
 import { registerSkillContextRuntimeExplainFunction } from "./functions/skill-context-runtime.js";
 import { registerSkillContextParityDiagnosticsFunction } from "./functions/skill-context-parity.js";
 import { registerSkillContextParityStabilityDiagnosticsFunction } from "./functions/skill-context-parity-stability.js";
+import { registerSkillContextParityDriftAttributionDiagnosticsFunction } from "./functions/skill-context-parity-drift-attribution.js";
 import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSkillFeedbackDiagnosticsFunction } from "./functions/skill-feedback-diagnostics.js";
 import { registerSkillFeedbackReductionPlanFunction } from "./functions/skill-feedback-reduction-plan.js";
@@ -354,6 +355,7 @@ async function main() {
   registerSkillContextRuntimeExplainFunction(sdk);
   registerSkillContextParityDiagnosticsFunction(sdk);
   registerSkillContextParityStabilityDiagnosticsFunction(sdk);
+  registerSkillContextParityDriftAttributionDiagnosticsFunction(sdk);
   registerSkillFeedbackFunction(sdk, kv);
   registerSkillFeedbackDiagnosticsFunction(sdk, kv);
   registerSkillFeedbackReductionPlanFunction(sdk, kv);
