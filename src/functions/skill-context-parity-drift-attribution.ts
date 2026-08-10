@@ -195,8 +195,12 @@ function parseStabilityResult(value: unknown): ParsedStabilityResult | null {
     const parityOutcomeChanged = first.consistent !== second.consistent || !sameCodes(first.mismatchCodes, second.mismatchCodes);
     if (state === "stable_consistent" && (!comparableConsistent(first) || !comparableConsistent(second) || result.directDriftCodes.length || result.runtimeDriftCodes.length || !result.stableAcrossSamples || result.repeatableMismatch || !hasExactStabilityReasons(result.reasonCodes, ["stable_consistency_observed"]))) return null;
     if (state === "stable_mismatch" && (!comparableMismatch(first) || !comparableMismatch(second) || !sameCodes(first.mismatchCodes, second.mismatchCodes) || result.directDriftCodes.length || result.runtimeDriftCodes.length || !result.stableAcrossSamples || !result.repeatableMismatch || !hasExactStabilityReasons(result.reasonCodes, ["stable_mismatch_observed"]))) return null;
-    if (state === "observed_drift" && (!first.comparisonAvailable || !second.comparisonAvailable || result.repeatableMismatch ||
-      (!result.directDriftCodes.length && !result.runtimeDriftCodes.length && !parityOutcomeChanged) || !hasExactStabilityReasons(result.reasonCodes, ["sample_drift_observed"]))) return null;
+    if (state === "observed_drift") {
+      const hasSnapshotDrift = result.directDriftCodes.length > 0 || result.runtimeDriftCodes.length > 0;
+      if (!(comparableConsistent(first) || comparableMismatch(first)) || !(comparableConsistent(second) || comparableMismatch(second)) ||
+        result.repeatableMismatch || (!hasSnapshotDrift && !parityOutcomeChanged) || result.stableAcrossSamples !== !hasSnapshotDrift ||
+        !hasExactStabilityReasons(result.reasonCodes, ["sample_drift_observed"])) return null;
+    }
   }
   return { state, first, second, directDriftCodes: [...result.directDriftCodes], runtimeDriftCodes: [...result.runtimeDriftCodes] };
 }

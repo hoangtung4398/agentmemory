@@ -227,7 +227,7 @@ describe("skill context parity drift attribution diagnostics", () => {
   it("reports parity-only outcome change without inventing a drift stage", async () => {
     loadSkillConfig.mockReturnValue(enabledConfig());
     sdk.setTrigger(async () => stabilityResult("observed_drift", {
-      first: summary(), second: summary({ state: "mismatch", consistent: false, mismatchCodes: ["packed_tokens_mismatch"] }),
+      first: summary(), second: summary({ state: "mismatch", consistent: false, mismatchCodes: ["packed_tokens_mismatch"] }), stableAcrossSamples: true,
     }));
     await expect(diagnose(validInput())).resolves.toMatchObject({
       success: true, state: "observed_drift", parityOutcomeChanged: true,
@@ -268,6 +268,72 @@ describe("skill context parity drift attribution diagnostics", () => {
       const result = await diagnose(validInput({ project: "private-project", agentId: "private-agent" }));
       expect(result).toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_stability_result"] });
       expect(JSON.stringify(result)).not.toContain("private");
+    }
+  });
+
+  it("requires comparable observed-drift samples in both positions and preserves malformed inputs", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const mutations: Array<(sample: Record<string, unknown>) => void> = [
+      (sample) => { sample.success = false; },
+      (sample) => { sample.enabled = false; },
+      (sample) => { sample.state = "disabled"; },
+      (sample) => { sample.state = "failed"; },
+      (sample) => { sample.comparisonAvailable = false; },
+      (sample) => { sample.state = "consistent"; sample.consistent = false; },
+      (sample) => { sample.state = "mismatch"; sample.consistent = true; sample.mismatchCodes = ["packed_tokens_mismatch"]; },
+      (sample) => { sample.state = "mismatch"; sample.consistent = false; sample.mismatchCodes = []; },
+      (sample) => { sample.state = "consistent"; sample.consistent = true; sample.mismatchCodes = ["packed_tokens_mismatch"]; },
+    ];
+    for (const mutate of mutations) {
+      for (const position of ["first", "second"] as const) {
+        const raw = stabilityResult("observed_drift", { directDriftCodes: ["overall_budget_mismatch"], stableAcrossSamples: false }) as unknown as Record<string, unknown>;
+        const sample = structuredClone(raw[position]) as Record<string, unknown>;
+        mutate(sample);
+        raw[position] = sample;
+        const before = structuredClone(raw);
+        sdk.setTrigger(async () => raw);
+        const result = await diagnose(validInput({ project: "private-project", agentId: "private-agent" }));
+        expect(result).toMatchObject({
+          success: false, state: "failed", reasonCodes: ["invalid_stability_result"],
+          stabilityTriggerAttempted: true, stabilityTriggerSucceeded: true, stabilityResultParsed: false,
+        });
+        expect(JSON.stringify(result)).not.toContain("private");
+        expect(raw).toEqual(before);
+        const privateRaw = structuredClone(raw);
+        (privateRaw[position] as Record<string, unknown>).privateMarker = "private-observed-drift";
+        const privateBefore = structuredClone(privateRaw);
+        sdk.setTrigger(async () => privateRaw);
+        const privateResult = await diagnose(validInput({ project: "private-project", agentId: "private-agent" }));
+        expect(privateResult).toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_stability_result"], stabilityResultParsed: false });
+        expect(JSON.stringify(privateResult)).not.toContain("private");
+        expect(privateRaw).toEqual(privateBefore);
+      }
+    }
+  });
+
+  it("enforces stableAcrossSamples from snapshot drift and accepts the valid controls", async () => {
+    loadSkillConfig.mockReturnValue(enabledConfig());
+    const invalid = [
+      stabilityResult("observed_drift", { directDriftCodes: ["overall_budget_mismatch"], stableAcrossSamples: true }),
+      stabilityResult("observed_drift", { runtimeDriftCodes: ["packed_tokens_mismatch"], stableAcrossSamples: true }),
+      stabilityResult("observed_drift", { directDriftCodes: ["overall_budget_mismatch"], runtimeDriftCodes: ["packed_tokens_mismatch"], stableAcrossSamples: true }),
+      stabilityResult("observed_drift", { first: summary(), second: summary({ state: "mismatch", consistent: false, mismatchCodes: ["packed_tokens_mismatch"] }), stableAcrossSamples: false }),
+    ];
+    for (const raw of invalid) {
+      const before = structuredClone(raw);
+      sdk.setTrigger(async () => raw);
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: false, state: "failed", reasonCodes: ["invalid_stability_result"], stabilityResultParsed: false });
+      expect(raw).toEqual(before);
+    }
+    const controls: Array<[SkillContextParityStabilityDiagnosticsResult, Record<string, unknown>]> = [
+      [stabilityResult("observed_drift", { directDriftCodes: ["overall_budget_mismatch"], stableAcrossSamples: false }), { directDriftAttribution: { stages: ["budget"] } }],
+      [stabilityResult("observed_drift", { runtimeDriftCodes: ["effective_recall_limit_mismatch", "packed_tokens_mismatch"], stableAcrossSamples: false }), { runtimeDriftAttribution: { stages: ["recall", "packing"] } }],
+      [stabilityResult("observed_drift", { directDriftCodes: ["overall_budget_mismatch"], runtimeDriftCodes: ["packed_tokens_mismatch"], stableAcrossSamples: false }), { directDriftAttribution: { stages: ["budget"] }, runtimeDriftAttribution: { stages: ["packing"] } }],
+      [stabilityResult("observed_drift", { first: summary(), second: summary({ state: "mismatch", consistent: false, mismatchCodes: ["packed_tokens_mismatch"] }), stableAcrossSamples: true }), { parityOutcomeChanged: true, directDriftAttribution: { stages: [] }, runtimeDriftAttribution: { stages: [] } }],
+    ];
+    for (const [raw, expected] of controls) {
+      sdk.setTrigger(async () => raw);
+      await expect(diagnose(validInput())).resolves.toMatchObject({ success: true, state: "observed_drift", ...expected });
     }
   });
 
