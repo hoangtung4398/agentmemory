@@ -746,6 +746,20 @@ lifecycle check; PR13b does not invent or persist a new status.
     lists. It has no direct KV access, public surface, state mutation,
     persistence, automatic repair, or promotion. Phase 4B remains future and
     separately authorized.
+32. **Phase 5N - Read-only skill context parity drift signature transition
+    stability diagnostics: implemented by this milestone.** The internal-only
+    `mem::skill-context-parity-drift-signature-transition-stability-diagnostics`
+    compares exactly two sequential Phase 5M observations using identical
+    normalized requests. It exposes only coarse transition equality as
+    `transition_stable` or `transition_drift`; it never returns the raw
+    transition class, v1 signature, family, stage, or lane. The samples are
+    bounded and non-atomic repeatability evidence, not proof of unchanged
+    state, a race-free execution, or a causal implementation change. The
+    exhausted-budget real chain makes forty-six triggers with no recall or KV
+    operations; the positive-budget chain makes fifty-four triggers, eight
+    recalls, and the existing sixteen `KV.skills` lists. It has no direct KV
+    access, persistence, history, baseline, repair, state mutation, or public
+    surface. Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
