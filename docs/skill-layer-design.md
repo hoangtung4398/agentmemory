@@ -703,6 +703,17 @@ lifecycle check; PR13b does not invent or persist a new status.
     chain makes nine triggers and zero reads; the positive-budget chain makes
     eleven triggers and the existing four `KV.skills` lists. Phase 4B remains
     future and separately authorized.
+29. **Phase 5K - Read-only skill context parity drift signature diagnostics:
+    implemented by this milestone.** The internal-only
+    `mem::skill-context-parity-drift-signature-diagnostics` takes one strict
+    Phase 5J shape result and emits one of sixteen fixed versioned `v1`
+    signatures. The signature is deterministic and descriptive only: it has no
+    historical comparison, persistence, stage names, severity, confidence, or
+    causal interpretation. The no-budget chain makes ten triggers and zero
+    reads; a positive-budget chain makes twelve triggers and the existing four
+    `KV.skills` lists. It has no direct KV access, public surface, state
+    mutation, or automatic repair. Phase 4B remains future and separately
+    authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
