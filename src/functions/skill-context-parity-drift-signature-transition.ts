@@ -41,6 +41,19 @@ const observedSignatures = new Set<SkillContextParityDriftSignature>([
   "v1:observed_drift:parity_with_cross_path_drift:single_stage",
   "v1:observed_drift:parity_with_cross_path_drift:cross_stage",
 ]);
+const signatureFamilies = new Map<string, SkillContextParityDriftSignatureFamily>([
+  [stableSignature, "stable_consistent"],
+  ...[...mismatchSignatures].map((signature) => [signature, "stable_mismatch"] as const),
+  ...[...observedSignatures].map((signature) => [signature, "observed_drift"] as const),
+]);
+const crossFamilyTransitions = new Map<string, SkillContextParityDriftSignatureTransitionClass>([
+  ["stable_consistent:stable_mismatch", "stable_consistent_to_stable_mismatch"],
+  ["stable_consistent:observed_drift", "stable_consistent_to_observed_drift"],
+  ["stable_mismatch:stable_consistent", "stable_mismatch_to_stable_consistent"],
+  ["stable_mismatch:observed_drift", "stable_mismatch_to_observed_drift"],
+  ["observed_drift:stable_consistent", "observed_drift_to_stable_consistent"],
+  ["observed_drift:stable_mismatch", "observed_drift_to_stable_mismatch"],
+]);
 
 function exact(value: unknown, expected: string[]): boolean {
   return Array.isArray(value) && value.length === expected.length && value.every((item, index) => item === expected[index]);
@@ -51,10 +64,11 @@ function exactKeys(value: Record<string, unknown>, required: string[], optional:
   return required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => allowed.has(key));
 }
 
-function familyFor(signature: SkillContextParityDriftSignature): SkillContextParityDriftSignatureFamily {
-  if (signature === stableSignature) return "stable_consistent";
-  if (mismatchSignatures.has(signature)) return "stable_mismatch";
-  return "observed_drift";
+function familyFor(signature: unknown): SkillContextParityDriftSignatureFamily {
+  if (typeof signature !== "string") throw new Error("invalid canonical drift signature");
+  const family = signatureFamilies.get(signature);
+  if (!family) throw new Error("invalid canonical drift signature");
+  return family;
 }
 
 export function buildSkillContextParityDriftSignatureTransitionRequest(input: RequestInput): {
@@ -82,7 +96,8 @@ export function evaluateSkillContextParityDriftSignatureTransition(input: {
   if (input.firstSignature === input.secondSignature) return { transitionClass: "same_signature", signatureChanged: false, familyChanged: false };
   if (firstFamily === "stable_mismatch" && secondFamily === "stable_mismatch") return { transitionClass: "stable_mismatch_variant_changed", signatureChanged: true, familyChanged: false };
   if (firstFamily === "observed_drift" && secondFamily === "observed_drift") return { transitionClass: "observed_drift_variant_changed", signatureChanged: true, familyChanged: false };
-  const transitionClass = `${firstFamily}_to_${secondFamily}` as SkillContextParityDriftSignatureTransitionClass;
+  const transitionClass = crossFamilyTransitions.get(`${firstFamily}:${secondFamily}`);
+  if (!transitionClass) throw new Error("invalid canonical drift signature transition");
   return { transitionClass, signatureChanged: true, familyChanged: true };
 }
 

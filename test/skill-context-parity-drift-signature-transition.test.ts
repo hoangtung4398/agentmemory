@@ -75,7 +75,7 @@ describe("skill context parity drift signature transition diagnostics", () => {
 
   it("is internal, follows Phase 5L, and preserves public counts", () => {
     const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
-    const tail = ["registerSkillContextParityDriftSignatureDiagnosticsFunction(sdk)", "registerSkillContextParityDriftSignatureStabilityDiagnosticsFunction(sdk)", "registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction(sdk)"];
+    const tail = ["registerSkillContextParityDiagnosticsFunction(sdk)", "registerSkillContextParityStabilityDiagnosticsFunction(sdk)", "registerSkillContextParityDriftAttributionDiagnosticsFunction(sdk)", "registerSkillContextParityDriftScopeDiagnosticsFunction(sdk)", "registerSkillContextParityDriftShapeDiagnosticsFunction(sdk)", "registerSkillContextParityDriftSignatureDiagnosticsFunction(sdk)", "registerSkillContextParityDriftSignatureStabilityDiagnosticsFunction(sdk)", "registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction(sdk)"];
     expect(tail.map((entry) => index.indexOf(entry))).toEqual([...tail.map((entry) => index.indexOf(entry))].sort((a, b) => a - b));
     expect(getAllTools()).toHaveLength(60); expect(getAllTools().some((tool) => JSON.stringify(tool).includes("signature-transition"))).toBe(false);
     expect(index).toContain("REST API: 135 endpoints"); expect(readFileSync(new URL("../README.md", import.meta.url), "utf8")).toContain("15 native skills");
@@ -84,9 +84,13 @@ describe("skill context parity drift signature transition diagnostics", () => {
   it("gates before validation, validates all boundaries, and never calls an unrecognized function", async () => {
     await expect(handler()(Symbol("private"))).resolves.toMatchObject({ success: true, enabled: false, reasonCodes: ["context_disabled"] }); expect(sdk.requests).toEqual([]);
     loadSkillConfig.mockReturnValue(config());
-    for (const invalid of [null, [], "x", 1, true, {}, { ...input, project: "  " }, { ...input, project: 1 }, { ...input, agentId: null }, { ...input, overallBudget: 0 }, { ...input, overallBudget: 1.5 }, { ...input, usedTokens: -1 }, { ...input, selectedBlockCount: Infinity }]) {
+    for (const invalid of [null, [], "x", 1, true, Symbol("x"), {}, { ...input, project: undefined }, { ...input, project: "  " }, { ...input, project: 1 }, { ...input, project: false }, { ...input, project: {} }, { ...input, project: [] }, { ...input, agentId: null }, { ...input, agentId: 1 }, { ...input, agentId: false }, { ...input, agentId: {} }, { ...input, agentId: [] }]) {
       sdk.requests.length = 0; await expect(handler()(invalid)).resolves.toMatchObject({ reasonCodes: ["invalid_input"] }); expect(sdk.requests).toEqual([]);
     }
+    for (const field of ["overallBudget", "usedTokens", "selectedBlockCount"] as const) for (const value of [undefined, null, "1", false, true, {}, [], NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1, -1]) {
+      sdk.requests.length = 0; await expect(handler()({ ...input, [field]: value })).resolves.toMatchObject({ success: false, enabled: true, state: "failed", reasonCodes: ["invalid_input"], firstSignatureTriggerAttempted: false, secondSignatureTriggerAttempted: false }); expect(sdk.requests).toEqual([]);
+    }
+    sdk.requests.length = 0; await expect(handler()({ ...input, overallBudget: 0 })).resolves.toMatchObject({ reasonCodes: ["invalid_input"] }); expect(sdk.requests).toEqual([]);
     sdk.setTrigger(async () => phase5K());
     await expect(handler()({ ...input, overallBudget: 1, usedTokens: 2, selectedBlockCount: Number.MAX_SAFE_INTEGER })).resolves.toMatchObject({ success: true });
     expect(sdk.requests.map((request) => request.function_id)).toEqual(Array(2).fill("mem::skill-context-parity-drift-signature-diagnostics"));
@@ -98,6 +102,8 @@ describe("skill context parity drift signature transition diagnostics", () => {
     expect(first).toEqual({ function_id: "mem::skill-context-parity-drift-signature-diagnostics", payload: { project: " /repo ", agentId: " agent ", overallBudget: 1000, usedTokens: 0, selectedBlockCount: 0 } });
     expect(first).not.toBe(second); expect(first.payload).not.toBe(second.payload); (first.payload as Record<string, unknown>).project = "mutated"; expect(second.payload.project).toBe(" /repo "); expect(source).toEqual(before);
     expect(buildSkillContextParityDriftSignatureTransitionRequest({ ...input, agentId: "  " }).payload).not.toHaveProperty("agentId");
+    for (const field of ["project", "agentId", "overallBudget", "usedTokens", "selectedBlockCount"] as const) (first.payload as Record<string, unknown>)[field] = "mutated";
+    expect(buildSkillContextParityDriftSignatureTransitionRequest(source)).toEqual(second); expect(source).toEqual(before);
   });
 
   it("strictly parses the complete Phase 5K contract and preserves first/second fail-fast semantics", async () => {
@@ -131,6 +137,24 @@ describe("skill context parity drift signature transition diagnostics", () => {
     }
   });
 
+  it("enforces disabled and every failed Phase 5K invariant in both sample positions", async () => {
+    loadSkillConfig.mockReturnValue(config());
+    const positions = async (raw: unknown, reason: string) => {
+      sdk.setTrigger(async () => raw); await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: [reason === "unavailable" ? "first_signature_classification_unavailable" : "invalid_first_signature_result"] });
+      let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : raw); await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: [reason === "unavailable" ? "second_signature_classification_unavailable" : "invalid_second_signature_result"] });
+    };
+    const disabled = unavailable("context_disabled") as Record<string, unknown>;
+    for (const field of ["success", "enabled", "reasonCodes", "signatureAvailable", "shapeTriggerAttempted", "shapeTriggerSucceeded", "shapeResultParsed", "signature"] as const) {
+      const value = field === "reasonCodes" ? ["wrong"] : field === "signature" ? signatures[0] : !(disabled[field] as boolean); await positions({ ...disabled, [field]: value }, "invalid");
+    }
+    const tuples = [["shape_trigger_failure", true, false, false], ["invalid_shape_result", true, true, false], ["shape_classification_unavailable", true, true, true]] as const;
+    for (const [code, attempted, succeeded, parsed] of tuples) {
+      const valid = unavailable(code) as Record<string, unknown>; await positions(valid, "unavailable");
+      for (const field of ["shapeTriggerAttempted", "shapeTriggerSucceeded", "shapeResultParsed"] as const) await positions({ ...valid, [field]: !(field === "shapeTriggerAttempted" ? attempted : field === "shapeTriggerSucceeded" ? succeeded : parsed) }, "invalid");
+      for (const raw of [{ ...valid, reasonCodes: ["invalid_input"] }, { ...valid, reasonCodes: ["unknown"] }, { ...valid, reasonCodes: [] }, { ...valid, reasonCodes: [code, code] }, { ...valid, success: true }, { ...valid, enabled: false }, { ...valid, signatureAvailable: true }, { ...valid, signature: signatures[0] }]) await positions(raw, "invalid");
+    }
+  });
+
   it("classifies all 256 signature pairs with the exact canonical distribution and pure flags", () => {
     const distribution = new Map<string, number>();
     for (const firstSignature of signatures) for (const secondSignature of signatures) {
@@ -139,6 +163,10 @@ describe("skill context parity drift signature transition diagnostics", () => {
       expect(evaluation.signatureChanged).toBe(firstSignature !== secondSignature); expect(evaluation.familyChanged).toBe(evaluation.transitionClass.includes("_to_")); expect(value).toEqual(before);
     }
     expect(Object.fromEntries(distribution)).toEqual({ same_signature: 16, stable_mismatch_variant_changed: 2, observed_drift_variant_changed: 156, stable_consistent_to_stable_mismatch: 2, stable_consistent_to_observed_drift: 13, stable_mismatch_to_stable_consistent: 2, stable_mismatch_to_observed_drift: 26, observed_drift_to_stable_consistent: 13, observed_drift_to_stable_mismatch: 26 });
+    for (const invalid of [undefined, null, "", "arbitrary", "v1:unknown", "v2:stable_consistent:none:none", {}, []]) {
+      expect(() => evaluateSkillContextParityDriftSignatureTransition({ firstSignature: invalid as Signature, secondSignature: signatures[0] })).toThrow();
+      expect(() => evaluateSkillContextParityDriftSignatureTransition({ firstSignature: signatures[0], secondSignature: invalid as Signature })).toThrow();
+    }
   });
 
   it("returns relation-only unchanged, variants, and every cross-family transition without signatures", async () => {
@@ -147,6 +175,7 @@ describe("skill context parity drift signature transition diagnostics", () => {
       [signatures[0], signatures[1], "stable_consistent_to_stable_mismatch"], [signatures[0], signatures[3], "stable_consistent_to_observed_drift"], [signatures[1], signatures[0], "stable_mismatch_to_stable_consistent"], [signatures[1], signatures[3], "stable_mismatch_to_observed_drift"], [signatures[3], signatures[0], "observed_drift_to_stable_consistent"], [signatures[3], signatures[1], "observed_drift_to_stable_mismatch"], [signatures[1], signatures[2], "stable_mismatch_variant_changed"], [signatures[3], signatures[4], "observed_drift_variant_changed"],
     ];
     for (const [first, second, transitionClass] of cases) { let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(first) : phase5K(second)); const output = await handler()(input); expect(output).toMatchObject({ success: true, state: "signature_transition", transitionClass, signatureChanged: true }); const serialized = JSON.stringify(output); expect(serialized).not.toContain("v1:"); expect(serialized).not.toContain("firstFamily"); expect(serialized).not.toContain("secondFamily"); }
+    for (const [first, second] of [[signatures[3], signatures[4]], [signatures[3], signatures[5]], [signatures[5], signatures[7]], [signatures[7], signatures[9]], [signatures[9], signatures[10]], [signatures[10], signatures[12]], [signatures[12], signatures[14]], [signatures[14], signatures[12]]] as Array<[Signature, Signature]>) { let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(first) : phase5K(second)); await expect(handler()(input)).resolves.toMatchObject({ transitionClass: "observed_drift_variant_changed", signatureChanged: true, familyChanged: false }); }
   });
 
   it("builds distinct identical requests from the handler and returns every control in the public result contract", async () => {
@@ -182,6 +211,13 @@ describe("skill context parity drift signature transition diagnostics", () => {
     loadSkillConfig.mockReturnValue(config()); const raw = phase5K(); const caller = { ...input, project: " private-project " }; const before = structuredClone({ raw, caller }); sdk.setTrigger(async () => raw);
     const first = await handler()(caller); first.reasonCodes.push("mutated" as never); (first as Record<string, unknown>).transitionClass = "mutated"; const second = await handler()(caller);
     expect(second).toMatchObject({ reasonCodes: ["signature_unchanged"], transitionClass: "same_signature" }); expect({ raw, caller }).toEqual(before);
+  });
+
+  it("does not mutate separate raw, thrown, builder, caller, or nested KV fixture objects", async () => {
+    loadSkillConfig.mockReturnValue(config()); const caller = { ...input, project: " /caller ", agentId: " agent " }; const builder = { ...input, project: " /builder ", agentId: " agent " }; const firstRaw = phase5K(signatures[0], { reason: "first-private" }); const secondRaw = phase5K(signatures[3], { reason: "second-private" }); const firstThrown = { marker: "first-thrown" }; const secondThrown = { marker: "second-thrown" }; const before = structuredClone({ caller, builder, firstRaw, secondRaw, firstThrown, secondThrown });
+    let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? firstRaw : secondRaw); await handler()(caller); buildSkillContextParityDriftSignatureTransitionRequest(builder); buildSkillContextParityDriftSignatureTransitionRequest(builder); calls = 0; sdk.setTrigger(async () => { if (++calls === 1) throw firstThrown; throw secondThrown; }); await handler()(input); expect({ caller, builder, firstRaw, secondRaw, firstThrown, secondThrown }).toEqual(before);
+    const rows = [skill(), { ...skill(), id: "skill_two", steps: ["Nested"], files: ["nested"], concepts: ["nested"], sourceObservationIds: ["nested"] }]; const rowsBefore = structuredClone(rows); const kv = mockKV(rows); const integrated = mockSdk();
+    registerSkillContextAdmissionExplainFunction(integrated as never, kv as never); registerSkillRecallFunction(integrated as never, kv as never); registerSkillContextRuntimeExplainFunction(integrated as never); registerSkillContextParityDiagnosticsFunction(integrated as never); registerSkillContextParityStabilityDiagnosticsFunction(integrated as never); registerSkillContextParityDriftAttributionDiagnosticsFunction(integrated as never); registerSkillContextParityDriftScopeDiagnosticsFunction(integrated as never); registerSkillContextParityDriftShapeDiagnosticsFunction(integrated as never); registerSkillContextParityDriftSignatureDiagnosticsFunction(integrated as never); registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction(integrated as never); await integrated.functions.get("mem::skill-context-parity-drift-signature-transition-diagnostics")!(input); expect(rows).toEqual(rowsBefore);
   });
 
   it("uses the real Phase 5D-5M chain in the exact no-budget and positive-budget orders", async () => {
