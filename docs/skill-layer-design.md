@@ -714,6 +714,21 @@ lifecycle check; PR13b does not invent or persist a new status.
     `KV.skills` lists. It has no direct KV access, public surface, state
     mutation, or automatic repair. Phase 4B remains future and separately
     authorized.
+30. **Phase 5L - Read-only skill context parity drift signature stability
+    diagnostics: implemented by this milestone.** The internal-only
+    `mem::skill-context-parity-drift-signature-stability-diagnostics` takes
+    exactly two sequential Phase 5K observations with an identical normalized
+    request and compares only their canonical v1 signatures. It reports
+    `signature_stable` when the two signatures are equal and `signature_drift`
+    when they differ. This is bounded repeatability evidence only: sampling is
+    sequential and non-atomic, stability does not prove an implementation is
+    unchanged, and drift does not identify a state mutation, cause, severity,
+    or root cause. It exposes no signature, historical baseline, stage, lane,
+    project, agent, or lower-level result details. The no-budget chain makes
+    twenty-two triggers and zero reads; the positive-budget chain makes
+    twenty-six triggers and the existing eight `KV.skills` lists. It has no
+    direct KV access, public surface, state mutation, persistence, automatic
+    repair, or promotion. Phase 4B remains future and separately authorized.
 
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
