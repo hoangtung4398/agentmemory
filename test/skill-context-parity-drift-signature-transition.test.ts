@@ -192,6 +192,14 @@ describe("skill context parity drift signature transition diagnostics", () => {
     for (const [first, second] of [[signatures[3], signatures[4]], [signatures[3], signatures[5]], [signatures[5], signatures[7]], [signatures[7], signatures[9]], [signatures[9], signatures[10]], [signatures[10], signatures[12]], [signatures[12], signatures[14]], [signatures[14], signatures[12]]] as Array<[Signature, Signature]>) { let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(first) : phase5K(second)); await expect(handler()(input)).resolves.toMatchObject({ transitionClass: "observed_drift_variant_changed", signatureChanged: true, familyChanged: false }); }
   });
 
+  it("proves the reverse stable-mismatch variant transition through the handler", async () => {
+    loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(signatures[2]) : phase5K(signatures[1]));
+    const output = await handler()(input);
+    expect(output).toMatchObject({ success: true, enabled: true, applied: false, state: "signature_transition", reasonCodes: ["signature_transition_observed"], transitionClass: "stable_mismatch_variant_changed", signatureChanged: true, familyChanged: false });
+    expect(sdk.requests.map((request) => request.function_id)).toEqual(["mem::skill-context-parity-drift-signature-diagnostics", "mem::skill-context-parity-drift-signature-diagnostics"]);
+    expect(JSON.stringify(output)).not.toContain("v1:");
+  });
+
   it("builds distinct identical requests from the handler and returns every control in the public result contract", async () => {
     loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(signatures[0]) : phase5K(signatures[1]));
     const output = await handler()({ ...input, project: " /repo ", agentId: " agent " });
