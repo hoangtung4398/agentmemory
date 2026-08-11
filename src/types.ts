@@ -1064,6 +1064,12 @@ export interface SkillContextParityDriftShapeDiagnosticsResult {
   parityOutcomePresent: boolean;
 }
 
+export interface SkillContextParityDriftSignatureDiagnosticsInput { project?: unknown; agentId?: unknown; overallBudget?: unknown; usedTokens?: unknown; selectedBlockCount?: unknown; }
+export type SkillContextParityDriftSignature = "v1:stable_consistent:none:none" | "v1:stable_mismatch:repeatable_mismatch:single_stage" | "v1:stable_mismatch:repeatable_mismatch:cross_stage" | "v1:observed_drift:direct_drift:single_stage" | "v1:observed_drift:direct_drift:cross_stage" | "v1:observed_drift:runtime_drift:single_stage" | "v1:observed_drift:runtime_drift:cross_stage" | "v1:observed_drift:cross_path_drift:single_stage" | "v1:observed_drift:cross_path_drift:cross_stage" | "v1:observed_drift:parity_only:none" | "v1:observed_drift:parity_with_direct_drift:single_stage" | "v1:observed_drift:parity_with_direct_drift:cross_stage" | "v1:observed_drift:parity_with_runtime_drift:single_stage" | "v1:observed_drift:parity_with_runtime_drift:cross_stage" | "v1:observed_drift:parity_with_cross_path_drift:single_stage" | "v1:observed_drift:parity_with_cross_path_drift:cross_stage";
+export type SkillContextParityDriftSignatureDiagnosticsState = "disabled" | "failed" | "stable_consistent" | "stable_mismatch" | "observed_drift";
+export type SkillContextParityDriftSignatureDiagnosticsReasonCode = "context_disabled" | "invalid_input" | "shape_trigger_failure" | "invalid_shape_result" | "shape_classification_unavailable" | "stable_consistency_signed" | "stable_mismatch_signed" | "observed_drift_signed";
+export interface SkillContextParityDriftSignatureDiagnosticsResult { success: boolean; enabled: boolean; applied: false; state: SkillContextParityDriftSignatureDiagnosticsState; reasonCodes: SkillContextParityDriftSignatureDiagnosticsReasonCode[]; reason?: string; sourceSamplingMode: "sequential_double_sample_non_atomic"; signatureAvailable: boolean; shapeTriggerAttempted: boolean; shapeTriggerSucceeded: boolean; shapeResultParsed: boolean; signature: SkillContextParityDriftSignature | null; }
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
