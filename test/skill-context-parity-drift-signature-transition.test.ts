@@ -104,6 +104,12 @@ describe("skill context parity drift signature transition diagnostics", () => {
     expect(buildSkillContextParityDriftSignatureTransitionRequest({ ...input, agentId: "  " }).payload).not.toHaveProperty("agentId");
     for (const field of ["project", "agentId", "overallBudget", "usedTokens", "selectedBlockCount"] as const) (first.payload as Record<string, unknown>)[field] = "mutated";
     expect(buildSkillContextParityDriftSignatureTransitionRequest(source)).toEqual(second); expect(source).toEqual(before);
+    for (const boundary of [{ overallBudget: 1, usedTokens: 0, selectedBlockCount: 0 }, { overallBudget: Number.MAX_SAFE_INTEGER, usedTokens: Number.MAX_SAFE_INTEGER, selectedBlockCount: Number.MAX_SAFE_INTEGER }, { overallBudget: 1, usedTokens: 2, selectedBlockCount: 0 }]) expect(buildSkillContextParityDriftSignatureTransitionRequest({ ...input, ...boundary }).payload).toMatchObject(boundary);
+  });
+
+  it("executes every valid numeric boundary through two outer Phase 5K requests", async () => {
+    loadSkillConfig.mockReturnValue(config()); sdk.setTrigger(async () => phase5K());
+    for (const boundary of [{ overallBudget: 1, usedTokens: 0, selectedBlockCount: 0 }, { overallBudget: Number.MAX_SAFE_INTEGER, usedTokens: 0, selectedBlockCount: 0 }, { overallBudget: 1000, usedTokens: Number.MAX_SAFE_INTEGER, selectedBlockCount: 0 }, { overallBudget: 1000, usedTokens: 0, selectedBlockCount: Number.MAX_SAFE_INTEGER }, { overallBudget: 1, usedTokens: 2, selectedBlockCount: 0 }]) { sdk.requests.length = 0; await expect(handler()({ ...input, ...boundary })).resolves.toMatchObject({ success: true }); expect(sdk.requests).toHaveLength(2); }
   });
 
   it("strictly parses the complete Phase 5K contract and preserves first/second fail-fast semantics", async () => {
@@ -114,6 +120,14 @@ describe("skill context parity drift signature transition diagnostics", () => {
     for (const raw of [unavailable("context_disabled"), unavailable("shape_trigger_failure"), unavailable("invalid_shape_result"), unavailable("shape_classification_unavailable")]) { sdk.setTrigger(async () => raw); await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: ["first_signature_classification_unavailable"], secondSignatureTriggerAttempted: false }); }
     let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : { ...phase5K(), signature: "bad" });
     await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: ["invalid_second_signature_result"], firstSignatureResultParsed: true, secondSignatureResultParsed: false });
+  });
+
+  it("rejects explicit scalar parser boundaries in both sample positions", async () => {
+    loadSkillConfig.mockReturnValue(config());
+    for (const raw of [{ ...phase5K(), state: null }, { ...phase5K(), state: 1 }, { ...phase5K(), state: "unknown" }, { ...phase5K(), sourceSamplingMode: null }, { ...phase5K(), sourceSamplingMode: 1 }, { ...phase5K(), signature: null }, { ...phase5K(), signature: 1 }, { ...phase5K(), reason: null }, { ...phase5K(), reason: 1 }]) {
+      sdk.setTrigger(async () => raw); await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: ["invalid_first_signature_result"] });
+      let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : raw); await expect(handler()(input)).resolves.toMatchObject({ reasonCodes: ["invalid_second_signature_result"] });
+    }
   });
 
   it("rejects every required field, scalar boundary, state coupling, and unavailable tuple in either sample", async () => {
@@ -191,6 +205,12 @@ describe("skill context parity drift signature transition diagnostics", () => {
     for (const second of [new Error("private"), "private", { private: true }, null, { ...phase5K(), signature: "bad" }, unavailable("context_disabled"), unavailable("shape_trigger_failure"), unavailable("invalid_shape_result"), unavailable("shape_classification_unavailable")]) { let calls = 0; sdk.setTrigger(async () => { if (++calls === 1) return phase5K(); if (second instanceof Error || second === null || typeof second === "string" || (typeof second === "object" && second && "private" in second)) throw second; return second; }); const output = await handler()(input); expect(output.firstSignatureResultParsed).toBe(true); expect(output.secondSignatureTriggerAttempted).toBe(true); expect(JSON.stringify(output)).not.toContain("private"); }
   });
 
+  it("proves first-sample fail-fast request counts for all unavailable categories", async () => {
+    loadSkillConfig.mockReturnValue(config());
+    const firstCases: unknown[] = [new Error("private"), "private", { private: true }, null, { ...phase5K(), signature: "bad" }, unavailable("context_disabled"), unavailable("shape_trigger_failure"), unavailable("invalid_shape_result"), unavailable("shape_classification_unavailable")];
+    for (const first of firstCases) { sdk.requests.length = 0; sdk.setTrigger(async () => { if (first instanceof Error || first === null || typeof first === "string" || (typeof first === "object" && first && "private" in first)) throw first; return first; }); const output = await handler()(input); expect(sdk.requests).toHaveLength(1); expect(output.secondSignatureTriggerAttempted).toBe(false); expect(output.secondSignatureTriggerSucceeded).toBe(false); expect(output.secondSignatureResultParsed).toBe(false); }
+  });
+
   it("uses exact flags and generic reasons for every failure category without retaining source markers", async () => {
     loadSkillConfig.mockReturnValue(config());
     const cases: Array<[string, (call: number) => Promise<unknown> | unknown, string, [boolean, boolean, boolean, boolean, boolean, boolean]]> = [
@@ -207,6 +227,22 @@ describe("skill context parity drift signature transition diagnostics", () => {
     }
   });
 
+  it("returns fresh defensive results for every success, disabled, invalid, and failure category", async () => {
+    const scenarios: Array<[string, () => void, () => unknown]> = [
+      ["unchanged", () => { loadSkillConfig.mockReturnValue(config()); sdk.setTrigger(async () => phase5K()); }, () => input],
+      ["transition", () => { loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K(signatures[0]) : phase5K(signatures[1])); }, () => input],
+      ["disabled", () => { loadSkillConfig.mockReturnValue({ contextEnabled: false }); }, () => input],
+      ["invalid", () => { loadSkillConfig.mockReturnValue(config()); }, () => ({})],
+      ["first-trigger", () => { loadSkillConfig.mockReturnValue(config()); sdk.setTrigger(async () => { throw { marker: "first" }; }); }, () => input],
+      ["first-malformed", () => { loadSkillConfig.mockReturnValue(config()); sdk.setTrigger(async () => ({ ...phase5K(), signature: "bad" })); }, () => input],
+      ["first-unavailable", () => { loadSkillConfig.mockReturnValue(config()); sdk.setTrigger(async () => unavailable("context_disabled")); }, () => input],
+      ["second-trigger", () => { loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : Promise.reject({ marker: "second" })); }, () => input],
+      ["second-malformed", () => { loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : ({ ...phase5K(), signature: "bad" })); }, () => input],
+      ["second-unavailable", () => { loadSkillConfig.mockReturnValue(config()); let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : unavailable("context_disabled")); }, () => input],
+    ];
+    for (const [name, setup, value] of scenarios) { setup(); const first = await handler()(value()); const pristine = structuredClone(first); first.reasonCodes.push("mutated" as never); for (const key of ["state", "transitionSamplingMode", "transitionAvailable", "firstSignatureTriggerAttempted", "firstSignatureTriggerSucceeded", "firstSignatureResultParsed", "secondSignatureTriggerAttempted", "secondSignatureTriggerSucceeded", "secondSignatureResultParsed", "transitionClass", "signatureChanged", "familyChanged"] as const) (first as Record<string, unknown>)[key] = "mutated"; setup(); const second = await handler()(value()); expect(second, name).toEqual(pristine); expect(second.reasonCodes).not.toBe(first.reasonCodes); }
+  });
+
   it("returns fresh defensive result controls and does not mutate raw values", async () => {
     loadSkillConfig.mockReturnValue(config()); const raw = phase5K(); const caller = { ...input, project: " private-project " }; const before = structuredClone({ raw, caller }); sdk.setTrigger(async () => raw);
     const first = await handler()(caller); first.reasonCodes.push("mutated" as never); (first as Record<string, unknown>).transitionClass = "mutated"; const second = await handler()(caller);
@@ -215,7 +251,7 @@ describe("skill context parity drift signature transition diagnostics", () => {
 
   it("does not mutate separate raw, thrown, builder, caller, or nested KV fixture objects", async () => {
     loadSkillConfig.mockReturnValue(config()); const caller = { ...input, project: " /caller ", agentId: " agent " }; const builder = { ...input, project: " /builder ", agentId: " agent " }; const firstRaw = phase5K(signatures[0], { reason: "first-private" }); const secondRaw = phase5K(signatures[3], { reason: "second-private" }); const firstThrown = { marker: "first-thrown" }; const secondThrown = { marker: "second-thrown" }; const before = structuredClone({ caller, builder, firstRaw, secondRaw, firstThrown, secondThrown });
-    let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? firstRaw : secondRaw); await handler()(caller); buildSkillContextParityDriftSignatureTransitionRequest(builder); buildSkillContextParityDriftSignatureTransitionRequest(builder); calls = 0; sdk.setTrigger(async () => { if (++calls === 1) throw firstThrown; throw secondThrown; }); await handler()(input); expect({ caller, builder, firstRaw, secondRaw, firstThrown, secondThrown }).toEqual(before);
+    let calls = 0; sdk.setTrigger(async () => ++calls === 1 ? firstRaw : secondRaw); await handler()(caller); buildSkillContextParityDriftSignatureTransitionRequest(builder); buildSkillContextParityDriftSignatureTransitionRequest(builder); sdk.setTrigger(async () => { throw firstThrown; }); await handler()(input); calls = 0; sdk.setTrigger(async () => ++calls === 1 ? phase5K() : Promise.reject(secondThrown)); await handler()(input); expect({ caller, builder, firstRaw, secondRaw, firstThrown, secondThrown }).toEqual(before);
     const rows = [skill(), { ...skill(), id: "skill_two", steps: ["Nested"], files: ["nested"], concepts: ["nested"], sourceObservationIds: ["nested"] }]; const rowsBefore = structuredClone(rows); const kv = mockKV(rows); const integrated = mockSdk();
     registerSkillContextAdmissionExplainFunction(integrated as never, kv as never); registerSkillRecallFunction(integrated as never, kv as never); registerSkillContextRuntimeExplainFunction(integrated as never); registerSkillContextParityDiagnosticsFunction(integrated as never); registerSkillContextParityStabilityDiagnosticsFunction(integrated as never); registerSkillContextParityDriftAttributionDiagnosticsFunction(integrated as never); registerSkillContextParityDriftScopeDiagnosticsFunction(integrated as never); registerSkillContextParityDriftShapeDiagnosticsFunction(integrated as never); registerSkillContextParityDriftSignatureDiagnosticsFunction(integrated as never); registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction(integrated as never); await integrated.functions.get("mem::skill-context-parity-drift-signature-transition-diagnostics")!(input); expect(rows).toEqual(rowsBefore);
   });
