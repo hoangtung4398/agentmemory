@@ -99,6 +99,7 @@ import { registerSkillContextParityDriftShapeDiagnosticsFunction } from "./funct
 import { registerSkillContextParityDriftSignatureDiagnosticsFunction } from "./functions/skill-context-parity-drift-signature.js";
 import { registerSkillContextParityDriftSignatureStabilityDiagnosticsFunction } from "./functions/skill-context-parity-drift-signature-stability.js";
 import { registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction } from "./functions/skill-context-parity-drift-signature-transition.js";
+import { registerSkillContextParityDriftSignatureTransitionStabilityDiagnosticsFunction } from "./functions/skill-context-parity-drift-signature-transition-stability.js";
 import { registerSkillFeedbackFunction } from "./functions/skill-feedback.js";
 import { registerSkillFeedbackDiagnosticsFunction } from "./functions/skill-feedback-diagnostics.js";
 import { registerSkillFeedbackReductionPlanFunction } from "./functions/skill-feedback-reduction-plan.js";
@@ -366,6 +367,7 @@ async function main() {
   registerSkillContextParityDriftSignatureDiagnosticsFunction(sdk);
   registerSkillContextParityDriftSignatureStabilityDiagnosticsFunction(sdk);
   registerSkillContextParityDriftSignatureTransitionDiagnosticsFunction(sdk);
+  registerSkillContextParityDriftSignatureTransitionStabilityDiagnosticsFunction(sdk);
   registerSkillFeedbackFunction(sdk, kv);
   registerSkillFeedbackDiagnosticsFunction(sdk, kv);
   registerSkillFeedbackReductionPlanFunction(sdk, kv);
