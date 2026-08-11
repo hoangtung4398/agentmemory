@@ -1018,6 +1018,52 @@ export interface SkillContextParityDriftScopeDiagnosticsResult {
   parityOnly: boolean;
 }
 
+export interface SkillContextParityDriftShapeDiagnosticsInput {
+  project?: unknown;
+  agentId?: unknown;
+  overallBudget?: unknown;
+  usedTokens?: unknown;
+  selectedBlockCount?: unknown;
+}
+
+export type SkillContextParityDriftLaneShape =
+  | "none" | "repeatable_mismatch" | "direct_drift" | "runtime_drift" | "cross_path_drift"
+  | "parity_only" | "parity_with_direct_drift" | "parity_with_runtime_drift" | "parity_with_cross_path_drift";
+
+export type SkillContextParityDriftStageSpan = "none" | "single_stage" | "cross_stage";
+
+export interface SkillContextParityDriftShapeEvaluation {
+  laneShape: SkillContextParityDriftLaneShape;
+  stageSpan: SkillContextParityDriftStageSpan;
+  stageAttributionPresent: boolean;
+  parityOutcomePresent: boolean;
+}
+
+export type SkillContextParityDriftShapeDiagnosticsState =
+  | "disabled" | "failed" | "stable_consistent" | "stable_mismatch" | "observed_drift";
+
+export type SkillContextParityDriftShapeDiagnosticsReasonCode =
+  | "context_disabled" | "invalid_input" | "scope_trigger_failure" | "invalid_scope_result"
+  | "scope_classification_unavailable" | "stable_consistency_shaped" | "stable_mismatch_shaped" | "observed_drift_shaped";
+
+export interface SkillContextParityDriftShapeDiagnosticsResult {
+  success: boolean;
+  enabled: boolean;
+  applied: false;
+  state: SkillContextParityDriftShapeDiagnosticsState;
+  reasonCodes: SkillContextParityDriftShapeDiagnosticsReasonCode[];
+  reason?: string;
+  sourceSamplingMode: "sequential_double_sample_non_atomic";
+  shapeAvailable: boolean;
+  scopeTriggerAttempted: boolean;
+  scopeTriggerSucceeded: boolean;
+  scopeResultParsed: boolean;
+  laneShape: SkillContextParityDriftLaneShape;
+  stageSpan: SkillContextParityDriftStageSpan;
+  stageAttributionPresent: boolean;
+  parityOutcomePresent: boolean;
+}
+
 export interface SearchResult {
   observation: CompressedObservation;
   score: number;
