@@ -761,6 +761,32 @@ lifecycle check; PR13b does not invent or persist a new status.
     access, persistence, history, baseline, repair, state mutation, or public
     surface. Phase 4B remains future and separately authorized.
 
+### Skill Context Diagnostic Closure Gate
+
+Phase 5A through Phase 5N are the currently completed skill-context
+diagnostic ladder. No next phase number is implied by alphabetical succession;
+in particular, this closure gate does not establish a Phase 5O.
+
+Phase 5N remains bounded, sequential, non-atomic evidence only. Stability is
+not a historical proof, a baseline, evidence of state immutability or race
+freedom, causal evidence, a severity or confidence measure, or a correctness
+proof. Drift is not automatically a defect, root cause, mutation, or repair
+signal. No further recursive diagnostic layer should be added merely to measure
+the repeatability of the immediately preceding repeatability layer.
+
+Any future runtime milestone must pose a distinct architectural question and
+receive separate explicit authorization. Phase 4B and all lifecycle or
+persistence work remain separately gated. A proposal that would write or
+persist state must explicitly address ownership, idempotency, concurrency,
+failure isolation, backward compatibility, rollback and recovery semantics,
+bounded IO, privacy, and default-off behavior before implementation can be
+authorized.
+
+This closure gate changes no behavior. Existing hooks, REST and MCP schemas,
+CLI and viewer surfaces, KV record shapes, BM25/vector/graph/RRF behavior,
+skill and public counts, and default behavior remain unchanged. It does not
+authorize a future implementation.
+
 Automatic execution, automatic promotion, and LLM-assisted lifecycle behavior
 remain out of scope.
 
