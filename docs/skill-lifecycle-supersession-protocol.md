@@ -60,6 +60,8 @@ this protocol does not redesign that primitive.
 The exact operation identity, conceptual marker contents, replay authority, and
 retention boundary are defined by
 [`skill-lifecycle-supersession-marker-contract.md`](skill-lifecycle-supersession-marker-contract.md).
+Explicit supersession admission is separately governed by
+[`skill-lifecycle-mutation-authorization-contract.md`](skill-lifecycle-mutation-authorization-contract.md).
 This protocol does not add a marker schema or runtime writer.
 
 States are `prepared`, `replacement_linked`, `old_superseded`, `completed`,

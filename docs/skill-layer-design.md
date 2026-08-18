@@ -630,6 +630,11 @@ lifecycle check; PR13b does not invent or persist a new status.
     reconciliation boundaries only. It creates no lifecycle runtime, CAS use,
     or persisted data; Phase 4B remains blocked pending proven primitives and
     separate implementation authorization.
+23. **Phase 4B5 - Lifecycle mutation authorization and dispatch-boundary
+    contract: designed.** [The authorization contract](skill-lifecycle-mutation-authorization-contract.md)
+    freezes independent default-deny admission for retirement and supersession;
+    it creates no config, runtime, lifecycle write, or persisted data. Phase 4B
+    remains blocked pending proven primitives and separate implementation authorization.
 20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and

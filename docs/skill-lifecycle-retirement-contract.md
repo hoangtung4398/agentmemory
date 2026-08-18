@@ -48,7 +48,9 @@ Missing `project` and `agentId` remain missing. Scope values are not trimmed,
 lowercased, Unicode-normalized, or changed to `null`. Explicit request scope
 and record scope must agree before a mutation can be attempted. Explicit intent
 alone never authorizes a write; a separately authorized default-off apply path
-would still be required.
+would still be required. The operation-specific admission boundary is defined
+by [Phase 4B5](skill-lifecycle-mutation-authorization-contract.md); this
+contract's target, CAS, and reconciliation semantics remain unchanged.
 
 ## 4. Exact retirement target
 

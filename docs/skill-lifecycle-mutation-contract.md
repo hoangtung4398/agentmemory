@@ -9,6 +9,8 @@ write.
 
 This contract defines prerequisites for a future, separately authorized,
 default-off mutation path. It does not grant that authorization.
+The separate [Phase 4B5 authorization contract](skill-lifecycle-mutation-authorization-contract.md)
+freezes control-plane admission only; it leaves all lifecycle runtime blocked.
 
 ## Current State Boundary
 
