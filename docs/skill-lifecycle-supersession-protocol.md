@@ -57,6 +57,10 @@ journal, since duplicate delivery could overwrite progress.
 The missing-key creation semantics are defined by
 [`conditional-state-create-if-absent-contract.md`](conditional-state-create-if-absent-contract.md);
 this protocol does not redesign that primitive.
+The exact operation identity, conceptual marker contents, replay authority, and
+retention boundary are defined by
+[`skill-lifecycle-supersession-marker-contract.md`](skill-lifecycle-supersession-marker-contract.md).
+This protocol does not add a marker schema or runtime writer.
 
 States are `prepared`, `replacement_linked`, `old_superseded`, `completed`,
 `conflict`, and `reconciliation_required`. Creation records immutable expected

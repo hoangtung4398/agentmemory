@@ -65,6 +65,8 @@ Phase 4B1 selects the [durable staged protocol](skill-lifecycle-supersession-pro
 It requires full-record single-key CAS plus CREATE_IF_ABSENT for markers with
 immutable identity fields and CAS-protected state progression; both remain
 blocked runtime prerequisites.
+Phase 4B2 defines the [conceptual marker identity and authority contract](skill-lifecycle-supersession-marker-contract.md)
+without creating a marker schema, persistence path, or reconciler.
 
 The current StateKV surface provides neither option. Therefore Phase 4B runtime
 supersession and retirement remain blocked unless a safe primitive or protocol
