@@ -618,6 +618,12 @@ lifecycle check; PR13b does not invent or persist a new status.
     privacy, and no-automatic-deletion semantics only. It creates no marker
     schema or runtime behavior; Phase 4B remains blocked pending the proven
     primitives and separate implementation authorization.
+21. **Phase 4B3 - Supersession reconciliation evidence contract: designed.**
+    [The reconciliation contract](skill-lifecycle-supersession-reconciliation-contract.md)
+    freezes exact-operation, bounded read-only classification of a
+    `reconciliation_required` marker. It authorizes no repair, state mutation,
+    runtime, or persisted data; Phase 4B remains blocked pending proven
+    primitives and separate implementation authorization.
 20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
