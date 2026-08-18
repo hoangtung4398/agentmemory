@@ -172,7 +172,10 @@ Allowed failure progression is bounded as follows:
 | `reconciliation_required` | terminal | No automatic exit in this milestone. |
 
 A future reconciler requires separate authorization. It must not be inferred
-from this marker contract.
+from this marker contract. The read-only evidence boundaries for a future
+`reconciliation_required` classifier are defined separately in
+[`skill-lifecycle-supersession-reconciliation-contract.md`](skill-lifecycle-supersession-reconciliation-contract.md);
+that contract authorizes neither reconciliation runtime nor marker mutation.
 
 ## 7. Transition authority
 

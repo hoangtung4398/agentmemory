@@ -92,7 +92,10 @@ CAS preconditions permit deterministic reconciliation. There is no blind retry.
 Automatic rollback is permitted only when full-record CAS proves the exact
 post-operation record still exists. Otherwise the protocol terminates in
 `reconciliation_required`. Reconciliation is an explicit future authority and
-never guesses that an unknown write succeeded.
+never guesses that an unknown write succeeded. The separately designed
+[`skill-lifecycle-supersession-reconciliation-contract.md`](skill-lifecycle-supersession-reconciliation-contract.md)
+defines only bounded read-only evidence classification; it authorizes no
+runtime repair, resume, rollback, or marker transition.
 
 ## Failure Matrix
 
