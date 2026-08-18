@@ -596,8 +596,14 @@ lifecycle check; PR13b does not invent or persist a new status.
 17. **Phase 4A - Read-only lifecycle review recommendation: implemented.** It
     identifies evidence for explicit human review without changing lifecycle
     state.
-18. **Phase 4B - Review-driven retirement and supersession: future.** Lifecycle
-    changes remain explicit and auditable.
+18. **Phase 4B0 - Review-driven skill lifecycle mutation contract and
+    state-safety audit: documented.**
+    [The contract](skill-lifecycle-mutation-contract.md) freezes the
+    precondition, concurrency, idempotency, recovery, privacy, and compatibility
+    requirements for future lifecycle writes. It changes no runtime behavior.
+    **Phase 4B - Review-driven retirement and supersession remains blocked,
+    future, and separately authorized** until a safe conditional write primitive
+    or recoverable protocol is authorized and proven.
 19. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
