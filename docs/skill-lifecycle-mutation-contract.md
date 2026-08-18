@@ -51,6 +51,10 @@ is a conflict with zero mutation. An unknown write outcome must never cause a
 blind retry; it requires an authoritative, safe reconciliation path defined by
 the future primitive/protocol.
 
+Phase 4B4's [retirement contract](skill-lifecycle-retirement-contract.md)
+freezes the exact target, timestamp, state-based idempotency, and unknown-outcome
+rules while leaving retirement runtime blocked.
+
 ## Supersession Contract
 
 Supersession is distinct from retirement. It requires an explicit replacement

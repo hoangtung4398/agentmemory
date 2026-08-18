@@ -624,6 +624,12 @@ lifecycle check; PR13b does not invent or persist a new status.
     `reconciliation_required` marker. It authorizes no repair, state mutation,
     runtime, or persisted data; Phase 4B remains blocked pending proven
     primitives and separate implementation authorization.
+22. **Phase 4B4 - Skill retirement exact-target and unknown-outcome contract:
+    designed.** [The retirement contract](skill-lifecycle-retirement-contract.md)
+    freezes the single-record active-to-retired target, replay, idempotency, and
+    reconciliation boundaries only. It creates no lifecycle runtime, CAS use,
+    or persisted data; Phase 4B remains blocked pending proven primitives and
+    separate implementation authorization.
 20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
