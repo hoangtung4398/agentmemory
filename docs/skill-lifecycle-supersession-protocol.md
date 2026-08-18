@@ -54,6 +54,9 @@ authority; its state is deliberately mutable only through full-record CAS.
 Journal creation requires
 **CREATE_IF_ABSENT** for that identity. Unconditional `KV.set` is not a safe
 journal, since duplicate delivery could overwrite progress.
+The missing-key creation semantics are defined by
+[`conditional-state-create-if-absent-contract.md`](conditional-state-create-if-absent-contract.md);
+this protocol does not redesign that primitive.
 
 States are `prepared`, `replacement_linked`, `old_superseded`, `completed`,
 `conflict`, and `reconciliation_required`. Creation records immutable expected
