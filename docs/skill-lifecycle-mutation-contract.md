@@ -61,11 +61,10 @@ replacement.supersedes === oldSkill.id
 oldSkill.status === "superseded"
 ```
 
-The future implementation must first choose and prove one safe prerequisite:
-
-1. an atomic multi-key transaction covering both records; or
-2. a separately designed recoverable, idempotent staged protocol with explicit
-   durable intermediate state and reconciliation rules.
+Phase 4B1 selects the [durable staged protocol](skill-lifecycle-supersession-protocol.md).
+It requires full-record single-key CAS plus CREATE_IF_ABSENT for markers with
+immutable identity fields and CAS-protected state progression; both remain
+blocked runtime prerequisites.
 
 The current StateKV surface provides neither option. Therefore Phase 4B runtime
 supersession and retirement remain blocked unless a safe primitive or protocol
