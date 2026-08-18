@@ -7,6 +7,10 @@ conditional single-key state primitive. It is not implemented, tested, proven,
 released, or consumable in the current iii-engine image, `iii-sdk@0.11.2`, or
 AgentMemory.
 
+This document covers full-record compare-and-set only. The complementary
+missing-key creation semantics are designed separately in
+[`conditional-state-create-if-absent-contract.md`](conditional-state-create-if-absent-contract.md).
+
 This documentation milestone authorizes no runtime function, SDK type,
 `StateKV` method, reducer write, schema change, capability probe, or state
 mutation. Phase 3B3 remains blocked until later runtime/SDK implementation and
@@ -310,10 +314,13 @@ API registration.
 
 ## 25. Future phase gates
 
-- **Phase 3B2B:** this conditional runtime primitive contract design.
+- **Phase 3B2B:** this full-record conditional replacement contract design.
+- **Phase 3B2B1:** the companion missing-key creation contract, designed only;
+  its API shape remains pending upstream alignment.
 - **Phase 3B2C0:** upstream ownership and version-line audit, inspected and
   documentation-only; it selects `BLOCKED_PENDING_UPSTREAM_ALIGNMENT`.
-- **Phase 3B2C1:** future upstream alignment and implementation-plan approval.
+- **Phase 3B2C1:** upstream alignment is awaiting substantive maintainer
+  response; it does not authorize upstream or downstream implementation.
 - **Phase 3B2C2:** future runtime/SDK implementation in an authorized upstream
   target line.
 - **Phase 3B2C3:** future authoritative backend proof and released artifact /

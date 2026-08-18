@@ -569,15 +569,18 @@ lifecycle check; PR13b does not invent or persist a new status.
 8. **Phase 3B2A - Conditional state capability audit: completed by PR #26.**
    It concludes **PROVEN_UNSUITABLE** for the resolved public state surface and
    recommends **ADD_NEW_RUNTIME_PRIMITIVE**. It is documentation only.
-9. **Phase 3B2B - Conditional runtime primitive contract: designed by this
-   milestone.** It is documentation only; no primitive exists, is implemented,
-   or is proven available.
+9. **Phase 3B2B - Full-record conditional replacement contract: designed.**
+   It is documentation only; no primitive exists, is implemented, or is proven
+   available. The companion [Phase 3B2B1 missing-key creation contract](conditional-state-create-if-absent-contract.md)
+   is likewise designed only and leaves its API shape pending upstream
+   alignment.
 10. **Phase 3B2C0 - Upstream ownership and version-line audit: inspected and
     documentation-only.** It selects **`BLOCKED_PENDING_UPSTREAM_ALIGNMENT`**:
     iii-hq/iii owns the primitive, no maintained 0.11 backport line or current
     upgrade path has been proven, and no runtime/SDK work is authorized.
 11. **Phase 3B2C1 - Upstream alignment and implementation-plan approval:
-    future.** It precedes any implementation.
+    waiting on substantive maintainer response.** It precedes any
+    implementation and authorizes none while waiting.
 12. **Phase 3B2C2 - Runtime/SDK primitive implementation: future and
     separately authorized.** It must occur in a maintainer-approved upstream
     target line.
@@ -606,7 +609,8 @@ lifecycle check; PR13b does not invent or persist a new status.
     or recoverable protocol is authorized and proven.
 19. **Phase 4B1 - Supersession atomicity strategy and durable protocol:
     documented.** [The protocol](skill-lifecycle-supersession-protocol.md)
-    selects a staged design requiring full-record CAS and CREATE_IF_ABSENT;
+    selects a staged design requiring full-record CAS and
+    [CREATE_IF_ABSENT](conditional-state-create-if-absent-contract.md);
     Phase 4B runtime remains blocked pending those proven primitives.
 20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
