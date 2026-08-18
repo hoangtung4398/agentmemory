@@ -604,7 +604,11 @@ lifecycle check; PR13b does not invent or persist a new status.
     **Phase 4B - Review-driven retirement and supersession remains blocked,
     future, and separately authorized** until a safe conditional write primitive
     or recoverable protocol is authorized and proven.
-19. **Phase 5A - Read-only skill recall explanation: implemented by this
+19. **Phase 4B1 - Supersession atomicity strategy and durable protocol:
+    documented.** [The protocol](skill-lifecycle-supersession-protocol.md)
+    selects a staged design requiring full-record CAS and CREATE_IF_ABSENT;
+    Phase 4B runtime remains blocked pending those proven primitives.
+20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
     separately authorized.
