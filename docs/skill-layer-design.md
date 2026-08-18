@@ -612,6 +612,12 @@ lifecycle check; PR13b does not invent or persist a new status.
     selects a staged design requiring full-record CAS and
     [CREATE_IF_ABSENT](conditional-state-create-if-absent-contract.md);
     Phase 4B runtime remains blocked pending those proven primitives.
+20. **Phase 4B2 - Supersession operation identity and durable marker contract:
+    designed.** [The marker contract](skill-lifecycle-supersession-marker-contract.md)
+    freezes canonical operation identity, conceptual marker authority, replay,
+    privacy, and no-automatic-deletion semantics only. It creates no marker
+    schema or runtime behavior; Phase 4B remains blocked pending the proven
+    primitives and separate implementation authorization.
 20. **Phase 5A - Read-only skill recall explanation: implemented by this
     milestone.** It explains existing advisory recall selection without adding a
     public surface or mutating persisted skills. Phase 4B remains future and
