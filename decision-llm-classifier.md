@@ -1,10 +1,29 @@
 # Optional LLM Decision Classifier
 
+## Status
+
+### Designed Broader LLM/Hybrid Policy
+
+The full policy described below is a design contract for later milestones. It
+includes future advisory/enforce selection, merging, and broader cost-control
+options that are not active today.
+
+### LLM1 Implemented Scope: Shadow Observation Only
+
+LLM1 runs only as an optional shadow observation after the heuristic decision
+has already been selected. It is limited to `shadow` mode with an existing
+provider, `AGENTMEMORY_DECISION_PROVIDER=llm` or `hybrid`, confidence below
+`0.85`, a `mem::remember` input or a prompt-submit `mem::observe` input, and
+non-secret-heavy evidence. The heuristic decision remains authoritative:
+LLM output cannot change the selected candidate, final action, queue writes,
+flow effects, indexing, or existing persistence. Advisory and enforce remain
+heuristic-only.
+
 The LLM classifier is optional. The v1 heuristic classifier must work without provider keys. If no provider is configured, provider calls fail, validation fails, or cost controls reject the request, the engine falls back to heuristic output.
 
 ## When To Use LLM Classification
 
-Use LLM classification only when:
+The broader design may use LLM classification only when:
 
 - decision mode is `shadow`, `advisory`, or explicitly enabled `enforce`,
 - heuristic confidence is below a configurable high-confidence threshold,
@@ -14,7 +33,13 @@ Use LLM classification only when:
 
 Do not use the LLM classifier for every hook event by default.
 
-## Prompt
+## Broader Design Prompt
+
+The following template belongs to the broader design and is not the LLM1
+payload contract. LLM1 uses an allowlist without project/session/agent/cwd,
+evidence identifiers, raw tool payloads, or image data; each included free-text
+field is redacted with `stripPrivateData`, and the serialized user prompt is
+capped at 6000 characters.
 
 System prompt:
 
@@ -193,7 +218,7 @@ Reject or downgrade the LLM result when:
 
 Validation failure must fall back to heuristic classification. When decision audit is enabled for the active mode, the fallback path must record a fallback reason in `DecisionAudit`.
 
-## Merge With Heuristics
+## Future Merge With Heuristics
 
 ```mermaid
 flowchart TD
@@ -207,7 +232,8 @@ flowchart TD
   Merge --> Decision["MemoryDecision"]
 ```
 
-Merge policy:
+This is future policy, not LLM1 behavior. LLM1 does not merge or select LLM
+decisions:
 
 - If heuristic confidence is high and LLM disagrees, keep heuristic and audit disagreement.
 - If heuristic confidence is medium and LLM confidence is higher, use LLM only after validation.
@@ -242,5 +268,6 @@ Fallback path:
 2. Attempt LLM only if allowed.
 3. Validate LLM output.
 4. If invalid/unavailable/timed out, use heuristic result.
-5. Persist audit with `outcome=fallback` and `fallbackReason`.
+5. In LLM1 shadow mode, retain the heuristic outcome and persist only a
+   bounded LLM-shadow audit code plus a stable fallback reason when applicable.
 6. Continue existing AgentMemory behavior according to mode.

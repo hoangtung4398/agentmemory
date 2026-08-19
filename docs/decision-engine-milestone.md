@@ -33,9 +33,12 @@ The canonical consolidation function is `mem::consolidation-pipeline`.
 - The company repository was not changed as part of this personal-repository
   milestone.
 
-The currently implemented classifier is heuristic-only. The provider setting
-is retained for configuration and response compatibility, but it does not
-enable an LLM classifier in this milestone.
+Shadow-only LLM observation is implemented when the existing provider is
+present and the decision configuration selects `shadow` plus `llm` or
+`hybrid`. The heuristic candidate remains selected and authoritative; LLM
+output can only add a validated `source: "llm"` candidate for comparison.
+LLM-controlled advisory/enforce behavior and LLM decision selection remain
+unimplemented.
 
 ## Configuration
 
@@ -45,7 +48,7 @@ Invalid values fall back to the listed defaults.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `AGENTMEMORY_DECISION_MODE` | `disabled` | Selects `disabled`, `shadow`, `advisory`, or `enforce`. |
-| `AGENTMEMORY_DECISION_PROVIDER` | `heuristic` | Records `heuristic`, `llm`, or `hybrid`; no LLM classification runs yet. |
+| `AGENTMEMORY_DECISION_PROVIDER` | `heuristic` | Selects heuristic-only behavior or eligible LLM1 shadow observation; advisory and enforce remain heuristic-only. |
 | `AGENTMEMORY_DECISION_AUDIT` | `true` when active | Enables decision audit persistence for an active mode. |
 | `AGENTMEMORY_DECISION_SHADOW_QUEUE` | `false` | Allows experimental candidate-queue persistence in shadow mode. |
 | `AGENTMEMORY_DECISION_CANDIDATE_QUEUE` | `true` for advisory/enforce | Enables queue writes when the mode otherwise permits them. |
@@ -139,7 +142,7 @@ state.
 
 ## Known Limitations
 
-- No LLM classifier is implemented.
+- Shadow-only LLM observation exists; LLM-controlled advisory/enforce/selection remains unimplemented.
 - No `working_memory` enforcement is implemented.
 - No Skill/Self-Improvement Layer is implemented.
 - Candidate consumption is opt-in and conservative; it is not a replacement
