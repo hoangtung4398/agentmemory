@@ -1,5 +1,6 @@
 import type { ISdk } from "iii-sdk";
 import { loadDecisionConfig } from "../config.js";
+import { stripPrivateData } from "./privacy.js";
 import { KV, fingerprintId, generateId } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
 import type {
@@ -8,6 +9,7 @@ import type {
   DecisionAction,
   DecisionAudit,
   DecisionCandidate,
+  DecisionCandidateKind,
   DecisionCandidateQueue,
   DecisionEvidenceRef,
   DecisionInput,
@@ -17,6 +19,7 @@ import type {
   DecisionSourceFunction,
   HookType,
   MemoryDecision,
+  MemoryProvider,
   ObservationType,
 } from "../types.js";
 
@@ -117,6 +120,15 @@ const CANDIDATE_ACTION_TO_KIND = {
   semantic_memory_candidate: "semantic",
   procedural_memory_candidate: "procedural",
 } as const satisfies Partial<Record<DecisionAction, DecisionCandidateQueue["kind"]>>;
+
+const LLM_REASON_CODE_RE = /^[a-z][a-z0-9_:-]{0,79}$/;
+const LLM_SYSTEM_PROMPT = [
+  "You are the AgentMemory Decision Engine classifier.",
+  "Return one JSON object only, with no markdown or surrounding prose.",
+  "Choose exactly one supported memory action.",
+  "Semantic and procedural actions are batch-consolidation candidates.",
+  "Do not include secrets or private data in the response.",
+].join(" ");
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1013,6 +1025,7 @@ async function persistDecisionAudit(
   outcome: DecisionAudit["outcome"],
   fallbackReason?: string,
   candidateQueue?: CandidateQueueWrite,
+  llmShadowCode?: LlmShadowObservation["auditCode"],
 ): Promise<DecisionAudit> {
   const audit: DecisionAudit = {
     id: generateId("da"),
@@ -1031,7 +1044,9 @@ async function persistDecisionAudit(
     confidence: decision.confidence,
     importance: decision.importance,
     ttlDays: decision.ttlDays,
-    reasonCodes: decision.reasonCodes,
+    reasonCodes: llmShadowCode
+      ? [...decision.reasonCodes, llmShadowCode]
+      : decision.reasonCodes,
     explanation: decision.explanation,
     evidenceRefs: input.evidenceRefs,
     outcome,
@@ -1066,7 +1081,265 @@ function buildDecision(
   }
 }
 
-export function registerDecisionEngineFunction(sdk: ISdk, kv: StateKV): void {
+interface LlmShadowObservation {
+  candidate?: DecisionCandidate;
+  auditCode?:
+    | "llm_shadow_agreement"
+    | "llm_shadow_disagreement"
+    | "llm_shadow_invalid"
+    | "llm_shadow_unavailable"
+    | "llm_shadow_skipped_sensitive";
+  fallbackReason?:
+    | "llm_shadow_provider_error"
+    | "llm_shadow_empty_response"
+    | "llm_shadow_invalid_json"
+    | "llm_shadow_invalid_schema"
+    | "llm_shadow_sensitive_output";
+}
+
+interface LlmClassification {
+  action: DecisionAction;
+  confidence: number;
+  importance: number;
+  ttlDays?: number;
+  reasonCodes: string[];
+  explanation: string;
+  concepts: string[];
+  files: string[];
+  privacy: {
+    containsSensitiveData: boolean;
+    redactionRequired: boolean;
+  };
+  candidate: {
+    kind: DecisionCandidateKind;
+    content: string;
+  };
+}
+
+function sanitizedText(value: unknown, limit: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = stripPrivateData(value).trim();
+  return text ? text.slice(0, limit) : undefined;
+}
+
+function sanitizedTextArray(value: string[] | undefined, limit: number, itemLimit: number): string[] {
+  return (value ?? [])
+    .map((item) => sanitizedText(item, itemLimit))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, limit);
+}
+
+function llmPrompt(input: DecisionInput): string {
+  const payload = {
+    sourceFunction: input.sourceFunction,
+    insertionPoint: input.insertionPoint,
+    hookType: input.hookType,
+    toolName: input.toolName,
+    observationState: input.observationState,
+    compressedSignals: input.compressedSignals && {
+      type: input.compressedSignals.type,
+      title: sanitizedText(input.compressedSignals.title, 200),
+      facts: sanitizedTextArray(input.compressedSignals.facts, 5, 200),
+      narrative: sanitizedText(input.compressedSignals.narrative, 700),
+      concepts: sanitizedTextArray(input.compressedSignals.concepts, 10, 120),
+      files: sanitizedTextArray(input.compressedSignals.files, 10, 160),
+      importance: input.compressedSignals.importance,
+      confidence: input.compressedSignals.confidence,
+    },
+    memoryDraft: input.memoryDraft && {
+      type: input.memoryDraft.type,
+      title: sanitizedText(input.memoryDraft.title, 200),
+      content: sanitizedText(input.memoryDraft.content, 700),
+      concepts: sanitizedTextArray(input.memoryDraft.concepts, 10, 120),
+      files: sanitizedTextArray(input.memoryDraft.files, 10, 160),
+    },
+    rawSignals: {
+      userPrompt: sanitizedText(input.rawSignals?.userPrompt, 700),
+    },
+  };
+  const serialized = JSON.stringify(payload);
+  if (serialized.length <= 6000) return serialized;
+
+  return JSON.stringify({
+    sourceFunction: input.sourceFunction,
+    insertionPoint: input.insertionPoint,
+    hookType: input.hookType,
+    toolName: input.toolName,
+    observationState: input.observationState,
+    compressedSignals: input.compressedSignals && {
+      type: input.compressedSignals.type,
+      title: sanitizedText(input.compressedSignals.title, 80),
+      facts: sanitizedTextArray(input.compressedSignals.facts, 2, 80),
+      narrative: sanitizedText(input.compressedSignals.narrative, 200),
+    },
+    memoryDraft: input.memoryDraft && {
+      type: input.memoryDraft.type,
+      title: sanitizedText(input.memoryDraft.title, 80),
+      content: sanitizedText(input.memoryDraft.content, 200),
+    },
+    rawSignals: {
+      userPrompt: sanitizedText(input.rawSignals?.userPrompt, 200),
+    },
+  });
+}
+
+function hasExactKeys(value: UnknownRecord, allowed: string[], required: string[]): boolean {
+  return (
+    required.every((key) => key in value) &&
+    Object.keys(value).every((key) => allowed.includes(key))
+  );
+}
+
+function boundedStringArray(value: unknown, maxItems: number): string[] | undefined {
+  if (!Array.isArray(value) || value.length > maxItems) return undefined;
+  const items = value.map((item) => typeof item === "string" ? item.trim() : "");
+  return items.every((item) => item.length > 0 && item.length <= 500) ? items : undefined;
+}
+
+function parseLlmClassification(response: string): LlmClassification {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response);
+  } catch {
+    throw new Error("llm_shadow_invalid_json");
+  }
+  if (!isRecord(parsed) || !hasExactKeys(
+    parsed,
+    ["action", "confidence", "importance", "ttlDays", "reasonCodes", "explanation", "concepts", "files", "privacy", "candidate"],
+    ["action", "confidence", "importance", "reasonCodes", "explanation", "concepts", "files", "privacy", "candidate"],
+  )) throw new Error("llm_shadow_invalid_schema");
+
+  const action = typeof parsed.action === "string" && DECISION_ACTIONS.has(parsed.action as DecisionAction)
+    ? parsed.action as DecisionAction
+    : undefined;
+  const confidence = numberValue(parsed.confidence);
+  const importance = numberValue(parsed.importance);
+  const ttlDays = parsed.ttlDays === undefined ? undefined : numberValue(parsed.ttlDays);
+  const reasonCodes = boundedStringArray(parsed.reasonCodes, 8);
+  const explanation = typeof parsed.explanation === "string" ? parsed.explanation.trim() : "";
+  const concepts = boundedStringArray(parsed.concepts, 20);
+  const files = boundedStringArray(parsed.files, 20);
+  const privacy = isRecord(parsed.privacy) && hasExactKeys(
+    parsed.privacy,
+    ["containsSensitiveData", "redactionRequired"],
+    ["containsSensitiveData", "redactionRequired"],
+  ) && typeof parsed.privacy.containsSensitiveData === "boolean" &&
+    typeof parsed.privacy.redactionRequired === "boolean"
+    ? parsed.privacy as LlmClassification["privacy"]
+    : undefined;
+  const candidate = isRecord(parsed.candidate) && hasExactKeys(parsed.candidate, ["kind", "content"], ["kind", "content"])
+    && (parsed.candidate.kind === "semantic" || parsed.candidate.kind === "procedural" || parsed.candidate.kind === "none")
+    && typeof parsed.candidate.content === "string" && parsed.candidate.content.length <= 2000
+    ? parsed.candidate as LlmClassification["candidate"]
+    : undefined;
+
+  if (
+    !action || confidence === undefined || confidence < 0 || confidence > 1 ||
+    importance === undefined || importance < 0 || importance > 10 ||
+    (ttlDays !== undefined && (!Number.isInteger(ttlDays) || ttlDays < 0 || ttlDays > 3650)) ||
+    !reasonCodes || reasonCodes.length === 0 || !reasonCodes.every((code) => LLM_REASON_CODE_RE.test(code)) ||
+    explanation.length === 0 || explanation.length > 500 || !concepts || !files || !privacy || !candidate
+  ) throw new Error("llm_shadow_invalid_schema");
+
+  const requiresCandidate = action === "semantic_memory_candidate" || action === "procedural_memory_candidate";
+  const expectedKind = action === "semantic_memory_candidate" ? "semantic" : action === "procedural_memory_candidate" ? "procedural" : "none";
+  if (candidate.kind !== expectedKind || (requiresCandidate && candidate.content.trim().length === 0)) {
+    throw new Error("llm_shadow_invalid_schema");
+  }
+
+  return { action, confidence, importance, ttlDays, reasonCodes, explanation, concepts, files, privacy, candidate };
+}
+
+function llmShadowAllowed(
+  config: DecisionConfig,
+  input: DecisionInput,
+  selected: DecisionCandidate,
+  provider: MemoryProvider | undefined,
+): { allowed: boolean; sensitive: boolean } {
+  const sensitive = isSecretHeavy(input, decisionText(input));
+  return {
+    allowed: config.mode === "shadow" &&
+      (config.provider === "llm" || config.provider === "hybrid") &&
+      Boolean(provider) &&
+      selected.confidence < 0.85 &&
+      (input.sourceFunction === "mem::remember" ||
+        (input.sourceFunction === "mem::observe" && input.hookType === "prompt_submit")) &&
+      !sensitive,
+    sensitive,
+  };
+}
+
+function llmCandidate(input: DecisionInput, classification: LlmClassification, now: string): DecisionCandidate {
+  return {
+    id: generateId("dc"),
+    inputId: input.id,
+    action: classification.action,
+    source: "llm",
+    reasonCodes: classification.reasonCodes,
+    explanation: classification.explanation,
+    confidence: classification.confidence,
+    importance: classification.importance,
+    ttlDays: classification.ttlDays,
+    tags: classification.reasonCodes,
+    concepts: classification.concepts,
+    files: classification.files,
+    evidenceRefs: input.evidenceRefs,
+    proposedQueue: classification.candidate.kind === "none" ? undefined : classification.candidate.kind,
+    createdAt: now,
+  };
+}
+
+async function observeLlmShadow(
+  config: DecisionConfig,
+  input: DecisionInput,
+  decision: MemoryDecision,
+  provider: MemoryProvider | undefined,
+  now: string,
+): Promise<LlmShadowObservation> {
+  const selected = decision.candidates.find((candidate) => candidate.id === decision.selectedCandidateId);
+  if (!selected) return { auditCode: "llm_shadow_unavailable" };
+  const gate = llmShadowAllowed(config, input, selected, provider);
+  if (gate.sensitive && config.mode === "shadow" && (config.provider === "llm" || config.provider === "hybrid")) {
+    return { auditCode: "llm_shadow_skipped_sensitive" };
+  }
+  if (!gate.allowed) return {};
+
+  let response: string;
+  try {
+    response = await provider!.summarize(LLM_SYSTEM_PROMPT, llmPrompt(input));
+  } catch {
+    return { auditCode: "llm_shadow_unavailable", fallbackReason: "llm_shadow_provider_error" };
+  }
+  if (!response.trim()) {
+    return { auditCode: "llm_shadow_invalid", fallbackReason: "llm_shadow_empty_response" };
+  }
+  if (stripPrivateData(response) !== response) {
+    return { auditCode: "llm_shadow_invalid", fallbackReason: "llm_shadow_sensitive_output" };
+  }
+  try {
+    const classification = parseLlmClassification(response);
+    if (classification.privacy.containsSensitiveData || classification.privacy.redactionRequired) {
+      return { auditCode: "llm_shadow_invalid", fallbackReason: "llm_shadow_sensitive_output" };
+    }
+    const candidate = llmCandidate(input, classification, now);
+    validateCandidate(candidate);
+    return {
+      candidate,
+      auditCode: candidate.action === selected.action ? "llm_shadow_agreement" : "llm_shadow_disagreement",
+    };
+  } catch (error) {
+    const fallbackReason = error instanceof Error && (
+      error.message === "llm_shadow_invalid_json" || error.message === "llm_shadow_invalid_schema"
+    ) ? error.message : "llm_shadow_invalid_schema";
+    return { auditCode: "llm_shadow_invalid", fallbackReason };
+  }
+}
+
+export function registerDecisionEngineFunction(
+  sdk: ISdk,
+  kv: StateKV,
+  provider?: MemoryProvider,
+): void {
   sdk.registerFunction("mem::decide", async (data: unknown): Promise<DecideResponse> => {
     const config = loadDecisionConfig();
 
@@ -1095,6 +1368,13 @@ export function registerDecisionEngineFunction(sdk: ISdk, kv: StateKV): void {
         }
       : buildDecision(input, config.auditEnabled, now);
 
+    const llmShadow = inputFallbackReason
+      ? undefined
+      : await observeLlmShadow(config, input, built.decision, provider, now);
+    if (llmShadow?.candidate) {
+      built.decision.candidates.push(llmShadow.candidate);
+    }
+
     const candidateQueue = await persistDecisionCandidateQueue(
       kv,
       input,
@@ -1111,8 +1391,9 @@ export function registerDecisionEngineFunction(sdk: ISdk, kv: StateKV): void {
           input,
           built.decision,
           built.fallbackReason ? "fallback" : outcomeForMode(config.mode),
-          built.fallbackReason,
+          built.fallbackReason ?? llmShadow?.fallbackReason,
           candidateQueue,
+          llmShadow?.auditCode,
         )
       : undefined;
 
@@ -1126,7 +1407,7 @@ export function registerDecisionEngineFunction(sdk: ISdk, kv: StateKV): void {
       auditId: audit?.id,
       candidateQueued: candidateQueue.queued,
       candidateQueueId: candidateQueue.queueId,
-      fallbackReason: built.fallbackReason,
+      fallbackReason: built.fallbackReason ?? llmShadow?.fallbackReason,
     };
   });
 }

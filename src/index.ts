@@ -258,7 +258,7 @@ async function main() {
   initMetrics(meterAccessor as ((name: string) => import("@opentelemetry/api").Meter) | undefined);
 
   registerPrivacyFunction(sdk);
-  registerDecisionEngineFunction(sdk, kv);
+  registerDecisionEngineFunction(sdk, kv, provider);
   registerObserveFunction(sdk, kv, dedupMap, config.maxObservationsPerSession);
   registerImageQuotaCleanup(sdk, kv);
   registerVisionSearchFunctions(sdk, kv, imageEmbeddingProvider);
